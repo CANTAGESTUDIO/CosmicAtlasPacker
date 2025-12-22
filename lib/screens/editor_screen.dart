@@ -751,10 +751,19 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
       // Apply auto slice to all selected sources
       for (final source in sourcesToProcess) {
         // Re-run auto slice with same settings for each image
-        final result = await _runAutoSliceForSource(source, dialogResult);
-        if (result != null) {
-          ref.read(multiSpriteProvider.notifier).addFromAutoSlice(source.id, result);
-          totalSprites += result.spriteCount;
+        final sliceResult = await _runAutoSliceForSource(source, dialogResult);
+        if (sliceResult != null) {
+          // If background removal was enabled, update the source image too
+          if (dialogResult.removeBackground && dialogResult.bgColorTolerance != null) {
+            final processedImage = _removeBackgroundWithTolerance(
+              source.rawImage,
+              dialogResult.bgColorTolerance!,
+            );
+            await _updateSourceImageWithProcessedForSource(source.id, processedImage);
+          }
+
+          ref.read(multiSpriteProvider.notifier).addFromAutoSlice(source.id, sliceResult);
+          totalSprites += sliceResult.spriteCount;
           processedCount++;
         }
       }
@@ -771,18 +780,45 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
   }
 
   /// Run auto slice for a specific source with given dialog settings
-  /// Uses default config since dialogResult doesn't expose config
   Future<AutoSliceResult?> _runAutoSliceForSource(LoadedSourceImage source, AutoSliceDialogResult dialogResult) async {
     const autoSlicer = AutoSlicerService();
 
-    // Use default config for batch processing
-    const config = AutoSliceConfig();
+    // Use the same config from dialog
+    final config = dialogResult.config;
+
+    // Prepare image (apply background removal if enabled)
+    img.Image imageToUse = source.rawImage;
+    if (dialogResult.removeBackground && dialogResult.bgColorTolerance != null) {
+      // Apply background removal with same tolerance
+      imageToUse = _removeBackgroundWithTolerance(
+        source.rawImage,
+        dialogResult.bgColorTolerance!,
+      );
+    }
 
     final result = await autoSlicer.autoSlice(
-      image: source.rawImage,
+      image: imageToUse,
       config: config,
     );
 
+    return result;
+  }
+
+  /// Remove background from image using corner pixel color with tolerance
+  img.Image _removeBackgroundWithTolerance(img.Image image, int tolerance) {
+    // Auto-detect background color from corner pixel
+    final bgColor = image.getPixel(0, 0);
+
+    // Create copy and replace background with transparent
+    final result = img.Image.from(image);
+    for (int y = 0; y < result.height; y++) {
+      for (int x = 0; x < result.width; x++) {
+        final pixel = result.getPixel(x, y);
+        if (_colorMatches(pixel, bgColor, tolerance)) {
+          result.setPixel(x, y, img.ColorRgba8(0, 0, 0, 0));
+        }
+      }
+    }
     return result;
   }
 

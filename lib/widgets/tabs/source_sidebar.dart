@@ -1,8 +1,11 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../models/image_group.dart';
+import '../../models/sprite_region.dart';
 import '../../providers/image_provider.dart';
 import '../../providers/multi_image_provider.dart';
 import '../../providers/multi_sprite_provider.dart';
@@ -134,6 +137,9 @@ class SourceSidebar extends ConsumerWidget {
                     onSourceRename: (sourceId, newName) {
                       ref.read(multiImageProvider.notifier).renameSource(sourceId, newName);
                     },
+                    onSpriteTap: (spriteId) {
+                      ref.read(multiSpriteProvider.notifier).selectSprite(spriteId);
+                    },
                     onToggleExpand: () {
                       ref.read(multiImageProvider.notifier).toggleGroupExpansion(group.id);
                     },
@@ -153,11 +159,14 @@ class SourceSidebar extends ConsumerWidget {
                 for (final source in sources.where((s) => !groupedSourceIds.contains(s.id)))
                   _SourceItem(
                     image: source.originalUiImage,
+                    sourceId: source.id,
                     fileName: source.fileName,
                     isActive: source.id == activeId,
                     isSelected: selectedIds.contains(source.id),
                     spriteCount: multiSpriteState.countForSource(source.id),
                     hasProcessed: source.hasProcessedImage,
+                    sprites: multiSpriteState.getSpritesForSource(source.id),
+                    selectedSpriteIds: multiSpriteState.selectedIds,
                     onTap: () => _handleSourceTap(ref, source.id, source.id == activeId),
                     onClose: () {
                       ref.read(multiImageProvider.notifier).removeSource(source.id);
@@ -165,6 +174,9 @@ class SourceSidebar extends ConsumerWidget {
                     },
                     onRename: (newName) {
                       ref.read(multiImageProvider.notifier).renameSource(source.id, newName);
+                    },
+                    onSpriteTap: (spriteId) {
+                      ref.read(multiSpriteProvider.notifier).selectSprite(spriteId);
                     },
                   ),
                 ],
@@ -187,6 +199,7 @@ class _GroupItem extends StatelessWidget {
   final void Function(String sourceId, bool isActive) onSourceTap;
   final void Function(String sourceId) onSourceClose;
   final void Function(String sourceId, String newName) onSourceRename;
+  final void Function(String spriteId) onSpriteTap;
   final VoidCallback onToggleExpand;
   final VoidCallback onUngroup;
   final void Function(String newName)? onGroupRename;
@@ -201,6 +214,7 @@ class _GroupItem extends StatelessWidget {
     required this.onSourceTap,
     required this.onSourceClose,
     required this.onSourceRename,
+    required this.onSpriteTap,
     required this.onToggleExpand,
     required this.onUngroup,
     this.onGroupRename,
@@ -252,15 +266,19 @@ class _GroupItem extends StatelessWidget {
                 for (final source in sources)
                   _SourceItem(
                     image: source.originalUiImage,
+                    sourceId: source.id,
                     fileName: source.fileName,
                     isActive: source.id == activeId,
                     isSelected: selectedIds.contains(source.id),
                     spriteCount: multiSpriteState.countForSource(source.id),
                     hasProcessed: source.hasProcessedImage,
                     isGroupChild: true,
+                    sprites: multiSpriteState.getSpritesForSource(source.id),
+                    selectedSpriteIds: multiSpriteState.selectedIds,
                     onTap: () => onSourceTap(source.id, source.id == activeId),
                     onClose: () => onSourceClose(source.id),
                     onRename: (newName) => onSourceRename(source.id, newName),
+                    onSpriteTap: onSpriteTap,
                   ),
               ],
             ),
@@ -561,30 +579,38 @@ class _UngroupButtonState extends State<_UngroupButton> {
 }
 
 /// Individual source item with thumbnail, filename, sprite count, and close button
-/// Supports double-click to rename
+/// Supports double-click to rename and sprite list expansion
 class _SourceItem extends StatefulWidget {
   final dynamic image; // ui.Image
+  final String sourceId;
   final String fileName;
   final bool isActive;
   final bool isSelected;
   final int spriteCount;
   final bool hasProcessed;
   final bool isGroupChild;
+  final List<SpriteRegion> sprites;
+  final Set<String> selectedSpriteIds;
   final VoidCallback onTap;
   final VoidCallback onClose;
   final void Function(String newName)? onRename;
+  final void Function(String spriteId)? onSpriteTap;
 
   const _SourceItem({
     required this.image,
+    required this.sourceId,
     required this.fileName,
     required this.isActive,
     required this.isSelected,
     required this.spriteCount,
     this.hasProcessed = false,
     this.isGroupChild = false,
+    this.sprites = const [],
+    this.selectedSpriteIds = const {},
     required this.onTap,
     required this.onClose,
     this.onRename,
+    this.onSpriteTap,
   });
 
   @override
@@ -594,6 +620,7 @@ class _SourceItem extends StatefulWidget {
 class _SourceItemState extends State<_SourceItem> {
   bool _isHovered = false;
   bool _isEditing = false;
+  bool _isSpritesExpanded = false;
   late TextEditingController _editController;
   late FocusNode _editFocusNode;
 
@@ -673,113 +700,194 @@ class _SourceItemState extends State<_SourceItem> {
 
   @override
   Widget build(BuildContext context) {
-    return MouseRegion(
-      onEnter: (_) => setState(() => _isHovered = true),
-      onExit: (_) => setState(() => _isHovered = false),
-      child: GestureDetector(
-        onTap: widget.onTap,
-        onDoubleTap: _startEditing,
-        child: Container(
-          height: widget.isGroupChild ? 38 : 44,
-          margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-          decoration: BoxDecoration(
-            color: _getBackgroundColor(),
-            border: Border(
-              left: BorderSide(
-                color: _getBorderColor(),
-                width: 2,
-              ),
-            ),
-            borderRadius: BorderRadius.circular(4),
-          ),
-          child: Row(
-            children: [
-              // Thumbnail image
-              Container(
-                width: widget.isGroupChild ? 26 : 32,
-                height: widget.isGroupChild ? 26 : 32,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(2),
-                  border: Border.all(
-                    color: EditorColors.divider,
-                    width: 1,
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Main source item row
+        MouseRegion(
+          onEnter: (_) => setState(() => _isHovered = true),
+          onExit: (_) => setState(() => _isHovered = false),
+          child: GestureDetector(
+            onTap: widget.onTap,
+            onDoubleTap: _startEditing,
+            child: Container(
+              height: widget.isGroupChild ? 38 : 44,
+              margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+              decoration: BoxDecoration(
+                color: _getBackgroundColor(),
+                border: Border(
+                  left: BorderSide(
+                    color: _getBorderColor(),
+                    width: 2,
                   ),
                 ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(2),
-                  child: RawImage(
-                    image: widget.image,
-                    fit: BoxFit.cover,
-                  ),
-                ),
+                borderRadius: BorderRadius.circular(4),
               ),
-              const SizedBox(width: 8),
+              child: Row(
+                children: [
+                  // Thumbnail image
+                  Container(
+                    width: widget.isGroupChild ? 26 : 32,
+                    height: widget.isGroupChild ? 26 : 32,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(2),
+                      border: Border.all(
+                        color: EditorColors.divider,
+                        width: 1,
+                      ),
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(2),
+                      child: RawImage(
+                        image: widget.image,
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
 
-              // File name and sprite count
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    // File name (editable on double-click)
-                    Row(
+                  // File name and sprite count
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Expanded(
-                          child: _isEditing
-                              ? _buildEditField()
-                              : Text(
-                                  widget.fileName,
-                                  style: TextStyle(
-                                    fontSize: widget.isGroupChild ? 10 : 11,
-                                    fontWeight: widget.isActive ? FontWeight.w500 : FontWeight.normal,
-                                    color: widget.isActive
-                                        ? EditorColors.iconDefault
-                                        : EditorColors.iconDisabled,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                  maxLines: 1,
-                                ),
-                        ),
-                        // Processed indicator
-                        if (widget.hasProcessed && !_isEditing)
-                          Padding(
-                            padding: const EdgeInsets.only(left: 4),
-                            child: Icon(
-                              Icons.auto_fix_high,
-                              size: 10,
-                              color: EditorColors.secondary,
+                        // File name (editable on double-click)
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _isEditing
+                                  ? _buildEditField()
+                                  : Text(
+                                      widget.fileName,
+                                      style: TextStyle(
+                                        fontSize: widget.isGroupChild ? 10 : 11,
+                                        fontWeight: widget.isActive ? FontWeight.w500 : FontWeight.normal,
+                                        color: widget.isActive
+                                            ? EditorColors.iconDefault
+                                            : EditorColors.iconDisabled,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                      maxLines: 1,
+                                    ),
                             ),
+                            // Processed indicator
+                            if (widget.hasProcessed && !_isEditing)
+                              Padding(
+                                padding: const EdgeInsets.only(left: 4),
+                                child: Icon(
+                                  Icons.auto_fix_high,
+                                  size: 10,
+                                  color: EditorColors.secondary,
+                                ),
+                              ),
+                          ],
+                        ),
+                        if (!widget.isGroupChild) ...[
+                          const SizedBox(height: 2),
+                          // Sprite count row with expand button
+                          Row(
+                            children: [
+                              // Sprite count (green color like sprite outline)
+                              Text(
+                                widget.spriteCount > 0
+                                    ? '${widget.spriteCount} sprites'
+                                    : '0',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: widget.spriteCount > 0
+                                      ? EditorColors.spriteOutline
+                                      : EditorColors.iconDisabled,
+                                ),
+                              ),
+                              // Expand button (only if has sprites)
+                              if (widget.spriteCount > 0 && !widget.isGroupChild) ...[
+                                const SizedBox(width: 4),
+                                _SpriteExpandButton(
+                                  isExpanded: _isSpritesExpanded,
+                                  onTap: () => setState(() => _isSpritesExpanded = !_isSpritesExpanded),
+                                ),
+                              ],
+                            ],
                           ),
+                        ],
                       ],
                     ),
-                    if (!widget.isGroupChild) ...[
-                      const SizedBox(height: 2),
-                      // Sprite count (green color like sprite outline)
-                      Text(
-                        widget.spriteCount > 0
-                            ? '${widget.spriteCount} sprites'
-                            : '0',
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: widget.spriteCount > 0
-                              ? EditorColors.spriteOutline
-                              : EditorColors.iconDisabled,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
+                  ),
 
-              // Close button (visible on hover or when active)
-              if ((_isHovered || widget.isActive) && !_isEditing) ...[
-                const SizedBox(width: 4),
-                _CloseButton(onTap: widget.onClose),
-              ],
-            ],
+                  // Close button (visible on hover or when active)
+                  if ((_isHovered || widget.isActive) && !_isEditing) ...[
+                    const SizedBox(width: 4),
+                    _CloseButton(onTap: widget.onClose),
+                  ],
+                ],
+              ),
+            ),
           ),
         ),
+
+        // Expanded sprite list
+        if (_isSpritesExpanded && widget.sprites.isNotEmpty)
+          _buildSpriteList(),
+      ],
+    );
+  }
+
+  Widget _buildSpriteList() {
+    return Container(
+      margin: const EdgeInsets.only(left: 16, right: 4, bottom: 4),
+      decoration: BoxDecoration(
+        color: EditorColors.panelBackground.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(
+          color: EditorColors.spriteOutline.withValues(alpha: 0.3),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Sprite items
+          ...widget.sprites.map((sprite) => _SpriteListItem(
+            sprite: sprite,
+            sourceImage: widget.image as ui.Image,
+            isSelected: widget.selectedSpriteIds.contains(sprite.id),
+            onTap: () => widget.onSpriteTap?.call(sprite.id),
+          )),
+          // Collapse button at the bottom
+          GestureDetector(
+            onTap: () => setState(() => _isSpritesExpanded = false),
+            child: Container(
+              height: 20,
+              decoration: BoxDecoration(
+                color: EditorColors.surface.withValues(alpha: 0.5),
+                borderRadius: const BorderRadius.only(
+                  bottomLeft: Radius.circular(3),
+                  bottomRight: Radius.circular(3),
+                ),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.keyboard_arrow_up,
+                    size: 12,
+                    color: EditorColors.iconDisabled,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    '접기',
+                    style: TextStyle(
+                      fontSize: 9,
+                      color: EditorColors.iconDisabled,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -939,5 +1047,212 @@ class _AddButtonState extends State<_AddButton> {
         ),
       ),
     );
+  }
+}
+
+/// Sprite expand/collapse button
+class _SpriteExpandButton extends StatefulWidget {
+  final bool isExpanded;
+  final VoidCallback onTap;
+
+  const _SpriteExpandButton({
+    required this.isExpanded,
+    required this.onTap,
+  });
+
+  @override
+  State<_SpriteExpandButton> createState() => _SpriteExpandButtonState();
+}
+
+class _SpriteExpandButtonState extends State<_SpriteExpandButton> {
+  bool _isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: Container(
+          height: 12,
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          decoration: BoxDecoration(
+            color: _isHovered || widget.isExpanded
+                ? EditorColors.spriteOutline.withValues(alpha: 0.3)
+                : EditorColors.spriteOutline.withValues(alpha: 0.15),
+            borderRadius: BorderRadius.circular(2),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                widget.isExpanded ? Icons.expand_less : Icons.expand_more,
+                size: 10,
+                color: EditorColors.spriteOutline,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Individual sprite list item (75% height of source item)
+class _SpriteListItem extends StatefulWidget {
+  final SpriteRegion sprite;
+  final ui.Image sourceImage;
+  final bool isSelected;
+  final VoidCallback? onTap;
+
+  const _SpriteListItem({
+    required this.sprite,
+    required this.sourceImage,
+    required this.isSelected,
+    this.onTap,
+  });
+
+  @override
+  State<_SpriteListItem> createState() => _SpriteListItemState();
+}
+
+class _SpriteListItemState extends State<_SpriteListItem> {
+  bool _isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    // 75% of source item height (44 * 0.75 = 33)
+    const itemHeight = 33.0;
+    const thumbnailSize = 24.0;
+
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: Container(
+          height: itemHeight,
+          margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+          decoration: BoxDecoration(
+            color: widget.isSelected
+                ? EditorColors.spriteOutline.withValues(alpha: 0.2)
+                : _isHovered
+                    ? EditorColors.surface.withValues(alpha: 0.5)
+                    : Colors.transparent,
+            border: widget.isSelected
+                ? Border(
+                    left: BorderSide(
+                      color: EditorColors.spriteOutline,
+                      width: 2,
+                    ),
+                  )
+                : null,
+            borderRadius: BorderRadius.circular(3),
+          ),
+          child: Row(
+            children: [
+              // Sprite thumbnail (cropped from source)
+              Container(
+                width: thumbnailSize,
+                height: thumbnailSize,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(2),
+                  border: Border.all(
+                    color: EditorColors.divider,
+                    width: 1,
+                  ),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(2),
+                  child: CustomPaint(
+                    size: Size(thumbnailSize, thumbnailSize),
+                    painter: _SpriteThumbnailPainter(
+                      sourceImage: widget.sourceImage,
+                      sprite: widget.sprite,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
+
+              // Sprite ID
+              Expanded(
+                child: Text(
+                  widget.sprite.id,
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: widget.isSelected
+                        ? EditorColors.iconDefault
+                        : EditorColors.iconDisabled,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+
+              // Size info
+              Text(
+                '${widget.sprite.width.toInt()}×${widget.sprite.height.toInt()}',
+                style: TextStyle(
+                  fontSize: 9,
+                  color: EditorColors.iconDisabled,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Custom painter for sprite thumbnail (crops sprite from source image)
+class _SpriteThumbnailPainter extends CustomPainter {
+  final ui.Image sourceImage;
+  final SpriteRegion sprite;
+
+  _SpriteThumbnailPainter({
+    required this.sourceImage,
+    required this.sprite,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final srcRect = sprite.sourceRect;
+    final dstRect = Rect.fromLTWH(0, 0, size.width, size.height);
+
+    // Draw checkerboard background for transparency
+    _drawCheckerboard(canvas, dstRect);
+
+    // Draw sprite portion of source image
+    canvas.drawImageRect(
+      sourceImage,
+      srcRect,
+      dstRect,
+      Paint()..filterQuality = FilterQuality.medium,
+    );
+  }
+
+  void _drawCheckerboard(Canvas canvas, Rect rect) {
+    const checkerSize = 4.0;
+    final paint1 = Paint()..color = const Color(0xFF404040);
+    final paint2 = Paint()..color = const Color(0xFF505050);
+
+    for (double y = rect.top; y < rect.bottom; y += checkerSize) {
+      for (double x = rect.left; x < rect.right; x += checkerSize) {
+        final isEven = ((x / checkerSize).floor() + (y / checkerSize).floor()) % 2 == 0;
+        canvas.drawRect(
+          Rect.fromLTWH(x, y, checkerSize, checkerSize),
+          isEven ? paint1 : paint2,
+        );
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _SpriteThumbnailPainter oldDelegate) {
+    return oldDelegate.sourceImage != sourceImage ||
+        oldDelegate.sprite != sprite;
   }
 }

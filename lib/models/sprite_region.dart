@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'dart:ui';
 
 import 'sprite_data.dart';
@@ -15,6 +16,13 @@ class SpriteRegion {
   /// 9-slice border definition (optional)
   final NineSliceBorder? nineSlice;
 
+  /// Extracted sprite image data (RGBA bytes)
+  /// Stored separately from source image for independent manipulation
+  final Uint8List? imageBytes;
+
+  /// Original position before any movement (for undo/reference)
+  final Offset? originalPosition;
+
   const SpriteRegion({
     required this.id,
     required this.sourceRect,
@@ -22,6 +30,8 @@ class SpriteRegion {
     this.pivot = const PivotPoint(),
     this.sourceFileId,
     this.nineSlice,
+    this.imageBytes,
+    this.originalPosition,
   });
 
   SpriteRegion copyWith({
@@ -32,6 +42,10 @@ class SpriteRegion {
     String? sourceFileId,
     NineSliceBorder? nineSlice,
     bool clearNineSlice = false,
+    Uint8List? imageBytes,
+    bool clearImageBytes = false,
+    Offset? originalPosition,
+    bool clearOriginalPosition = false,
   }) {
     return SpriteRegion(
       id: id ?? this.id,
@@ -40,8 +54,13 @@ class SpriteRegion {
       pivot: pivot ?? this.pivot,
       sourceFileId: sourceFileId ?? this.sourceFileId,
       nineSlice: clearNineSlice ? null : (nineSlice ?? this.nineSlice),
+      imageBytes: clearImageBytes ? null : (imageBytes ?? this.imageBytes),
+      originalPosition: clearOriginalPosition ? null : (originalPosition ?? this.originalPosition),
     );
   }
+
+  /// Check if this sprite has extracted image data
+  bool get hasImageData => imageBytes != null && imageBytes!.isNotEmpty;
 
   /// Check if 9-slice is enabled for this sprite
   bool get hasNineSlice => nineSlice != null && nineSlice!.isEnabled;
@@ -54,6 +73,13 @@ class SpriteRegion {
 
   /// Height in pixels
   int get height => sourceRect.height.round();
+
+  /// Get pivot position in canvas coordinates
+  Offset get pivotPosition {
+    final x = sourceRect.left + sourceRect.width * pivot.x;
+    final y = sourceRect.top + sourceRect.height * pivot.y;
+    return Offset(x, y);
+  }
 
   @override
   bool operator ==(Object other) =>

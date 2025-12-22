@@ -12,10 +12,16 @@ import '../../theme/editor_colors.dart';
 class AutoSliceDialogResult {
   final AutoSliceResult sliceResult;
   final img.Image? processedImage; // null if no background removal
+  final AutoSliceConfig config; // Config used for slicing
+  final bool removeBackground; // Whether background was removed
+  final int? bgColorTolerance; // Background color tolerance (if removed)
 
   const AutoSliceDialogResult({
     required this.sliceResult,
+    required this.config,
     this.processedImage,
+    this.removeBackground = false,
+    this.bgColorTolerance,
   });
 }
 
@@ -209,9 +215,14 @@ class _AutoSliceDialogState extends State<AutoSliceDialog> {
       );
 
       if (mounted) {
+        final config = _buildConfig();
+        final tolerance = int.tryParse(_toleranceController.text) ?? 0;
         Navigator.of(context).pop(AutoSliceDialogResult(
           sliceResult: result,
+          config: config,
           processedImage: _removeBackground ? _processedImage : null,
+          removeBackground: _removeBackground,
+          bgColorTolerance: _removeBackground ? tolerance : null,
         ));
       }
     } catch (e) {
