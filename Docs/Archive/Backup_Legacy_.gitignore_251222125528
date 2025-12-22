@@ -1,0 +1,40 @@
+# Archon Generated
+.env
+.DS_Store
+*.log
+
+# Build
+build/
+dist/
+
+# Dependencies
+node_modules/
+
+# IDE
+.idea/
+.vscode/
+*.xcodeproj/xcuserdata/
+# Environment
+**/.DS_Store
+.env.local
+.env*.local
+
+# Flutter Desktop
+.dart_tool/
+.packages
+*.iml
+pubspec.lock
+macos/Pods/
+macos/Podfile.lock
+macos/.symlinks/
+macos/Flutter/ephemeral/
+windows/flutter/ephemeral/
+linux/flutter/ephemeral/
+*.g.dart
+*.freezed.dart
+coverage/
+.fvm/
+!.fvm/fvm_config.json
+
+# Archon
+.archon/

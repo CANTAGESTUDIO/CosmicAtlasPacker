@@ -1,0 +1,14 @@
+{
+  "hooks" : {
+    "Stop" : [
+      {
+        "hooks" : [
+          {
+            "command" : "droid -p \"Use the history-logger skill to log this completed task.\"",
+            "type" : "command"
+          }
+        ]
+      }
+    ]
+  }
+}
