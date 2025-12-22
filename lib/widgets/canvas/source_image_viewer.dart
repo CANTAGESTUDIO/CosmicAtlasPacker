@@ -44,6 +44,9 @@ class SourceImageViewerState extends ConsumerState<SourceImageViewer>
   Animation<Matrix4>? _animation;
   Size _lastViewportSize = Size.zero;
 
+  // Track if initial fit-to-view is needed
+  bool _needsInitialFit = true;
+
   // Middle mouse button panning state
   bool _isMiddleButtonPanning = false;
   Offset? _lastMiddleButtonPosition;
@@ -101,12 +104,10 @@ class SourceImageViewerState extends ConsumerState<SourceImageViewer>
     super.didUpdateWidget(oldWidget);
     // Auto fit-to-view when image changes
     if (widget.image != oldWidget.image && widget.image != null) {
-      // Schedule fit-to-view after layout
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (_lastViewportSize != Size.zero && mounted) {
-          zoomToFit(_lastViewportSize);
-        }
-      });
+      // Apply immediately if viewport size is known
+      if (_lastViewportSize != Size.zero) {
+        zoomToFit(_lastViewportSize);
+      }
     }
   }
 
@@ -194,7 +195,7 @@ class SourceImageViewerState extends ConsumerState<SourceImageViewer>
     _animateToMatrix(newMatrix);
   }
 
-  /// Zoom to fit the image in the viewport
+  /// Zoom to fit the image in the viewport (instant, no animation)
   void zoomToFit(Size viewportSize) {
     if (widget.image == null) return;
 
@@ -211,10 +212,11 @@ class SourceImageViewerState extends ConsumerState<SourceImageViewer>
     matrix.setEntry(0, 3, (viewportSize.width - imageWidth * scale) / 2);
     matrix.setEntry(1, 3, (viewportSize.height - imageHeight * scale) / 2);
 
-    _animateToMatrix(matrix);
+    // Apply immediately without animation
+    _transformationController.value = matrix;
   }
 
-  /// Animate transformation to target matrix
+  /// Animate transformation to target matrix (for user-triggered zoom)
   void _animateToMatrix(Matrix4 targetMatrix) {
     _animationController?.stop();
 
@@ -253,6 +255,13 @@ class SourceImageViewerState extends ConsumerState<SourceImageViewer>
             builder: (context, constraints) {
               _lastViewportSize = constraints.biggest;
 
+              // Initial fit-to-view when viewport is first available and image exists
+              if (_needsInitialFit && widget.image != null) {
+                _needsInitialFit = false;
+                // Apply immediately - zoomToFit directly sets the transform
+                zoomToFit(constraints.biggest);
+              }
+
               return Listener(
                 // Custom wheel zoom with adjustable sensitivity
                 onPointerSignal: (event) {
@@ -264,22 +273,39 @@ class SourceImageViewerState extends ConsumerState<SourceImageViewer>
                 onPointerDown: _handlePointerDown,
                 onPointerMove: _handlePointerMove,
                 onPointerUp: _handlePointerUp,
-                child: InteractiveViewer(
-                  transformationController: _transformationController,
-                  minScale: ZoomPresets.min / 100, // 0.25 (25%)
-                  maxScale: ZoomPresets.max / 100, // 8.0 (800%)
-                  // Allow content smaller than viewport (don't force scale to 1.0)
-                  constrained: false,
-                  // Disable built-in pinch zoom - use custom wheel handler instead
-                  // This allows child gestures (SlicingOverlay) to work properly
-                  scaleEnabled: false,
-                  // Enable pan when Space is pressed or middle button is down
-                  panEnabled: isPanning,
-                  // Allow panning beyond image bounds with margin
-                  boundaryMargin: const EdgeInsets.all(double.infinity),
-                  // Optimize clipping for better performance
-                  clipBehavior: Clip.hardEdge,
-                  child: _buildImageStack(),
+                child: Stack(
+                  children: [
+                    // InteractiveViewer with image content
+                    InteractiveViewer(
+                      transformationController: _transformationController,
+                      minScale: ZoomPresets.min / 100, // 0.25 (25%)
+                      maxScale: ZoomPresets.max / 100, // 8.0 (800%)
+                      // Allow content smaller than viewport (don't force scale to 1.0)
+                      constrained: false,
+                      // Disable built-in pinch zoom - use custom wheel handler instead
+                      // This allows child gestures (SlicingOverlay) to work properly
+                      scaleEnabled: false,
+                      // Enable pan when Space is pressed or middle button is down
+                      panEnabled: isPanning,
+                      // Allow panning beyond image bounds with margin
+                      boundaryMargin: const EdgeInsets.all(double.infinity),
+                      // Optimize clipping for better performance
+                      clipBehavior: Clip.hardEdge,
+                      child: _buildImageStack(includeOverlay: false),
+                    ),
+                    // Overlay on top - covers entire viewport for drag selection outside image
+                    if (widget.overlay != null)
+                      Positioned.fill(
+                        child: _TransformedOverlay(
+                          transform: _transformationController.value,
+                          imageSize: Size(
+                            widget.image!.width.toDouble(),
+                            widget.image!.height.toDouble(),
+                          ),
+                          child: widget.overlay!,
+                        ),
+                      ),
+                  ],
                 ),
               );
             },
@@ -335,7 +361,7 @@ class SourceImageViewerState extends ConsumerState<SourceImageViewer>
     _transformationController.value = newMatrix;
   }
 
-  Widget _buildImageStack() {
+  Widget _buildImageStack({bool includeOverlay = true}) {
     final imageSize = Size(
       widget.image!.width.toDouble(),
       widget.image!.height.toDouble(),
@@ -374,8 +400,8 @@ class SourceImageViewerState extends ConsumerState<SourceImageViewer>
               willChange: true,
             ),
           ),
-        // User overlay layer (for selection, sprites, etc.)
-        if (widget.overlay != null)
+        // User overlay layer (for selection, sprites, etc.) - only if includeOverlay is true
+        if (includeOverlay && widget.overlay != null)
           SizedBox(
             width: imageSize.width,
             height: imageSize.height,
@@ -521,5 +547,74 @@ class _GridPainter extends CustomPainter {
   bool shouldRepaint(covariant _GridPainter oldDelegate) {
     return oldDelegate.gridSize != gridSize ||
         oldDelegate.viewportScale != viewportScale;
+  }
+}
+
+/// Widget that transforms child coordinates based on InteractiveViewer transform
+/// This allows overlay to cover entire viewport while converting coordinates to image space
+class _TransformedOverlay extends StatelessWidget {
+  final Matrix4 transform;
+  final Size imageSize;
+  final Widget child;
+
+  const _TransformedOverlay({
+    required this.transform,
+    required this.imageSize,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRect(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          // Pass transform to child so it can convert viewport coordinates to image coordinates
+          return TransformedOverlayScope(
+            transform: transform,
+            imageSize: imageSize,
+            viewportSize: constraints.biggest,
+            child: child,
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// InheritedWidget to provide transform data to overlay children
+/// Public so SlicingOverlay can access it for coordinate conversion
+class TransformedOverlayScope extends InheritedWidget {
+  final Matrix4 transform;
+  final Size imageSize;
+  final Size viewportSize;
+
+  const TransformedOverlayScope({
+    super.key,
+    required this.transform,
+    required this.imageSize,
+    required this.viewportSize,
+    required super.child,
+  });
+
+  static TransformedOverlayScope? of(BuildContext context) {
+    return context.dependOnInheritedWidgetOfExactType<TransformedOverlayScope>();
+  }
+
+  /// Convert viewport coordinates to image coordinates
+  Offset viewportToImage(Offset viewportPoint) {
+    // Invert the transform to convert from viewport to image coordinates
+    final inverted = Matrix4.inverted(transform);
+    final transformed = MatrixUtils.transformPoint(inverted, viewportPoint);
+    return transformed;
+  }
+
+  /// Get current scale from transform
+  double get scale => transform.getMaxScaleOnAxis();
+
+  @override
+  bool updateShouldNotify(TransformedOverlayScope oldWidget) {
+    return transform != oldWidget.transform ||
+        imageSize != oldWidget.imageSize ||
+        viewportSize != oldWidget.viewportSize;
   }
 }

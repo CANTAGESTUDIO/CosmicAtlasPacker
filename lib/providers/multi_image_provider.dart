@@ -262,8 +262,8 @@ class MultiImageNotifier extends StateNotifier<MultiImageState> {
       // Add new sources to existing list
       final updatedSources = [...state.sources, ...newSources];
 
-      // Set first new source as active if no current active
-      final newActiveId = state.activeSourceId ?? newSources.first.id;
+      // Always set first new source as active (user expects to see loaded image)
+      final newActiveId = newSources.first.id;
 
       state = MultiImageState(
         sources: updatedSources,
@@ -581,6 +581,19 @@ class MultiImageNotifier extends StateNotifier<MultiImageState> {
     );
   }
 
+  /// Update a specific source image by ID
+  Future<void> updateSourceImage({
+    required String sourceId,
+    required img.Image rawImage,
+    required ui.Image uiImage,
+  }) async {
+    updateProcessedImage(
+      sourceId,
+      processedRaw: rawImage,
+      processedUi: uiImage,
+    );
+  }
+
   /// Clear processed image for a source (revert to original)
   void clearProcessedImage(String sourceId) {
     final updatedSources = state.sources.map((source) {
@@ -713,6 +726,24 @@ class MultiImageNotifier extends StateNotifier<MultiImageState> {
     updatedGroups[groupId] = group.copyWith(name: newName);
 
     state = state.copyWith(groups: updatedGroups);
+  }
+
+  /// Select all sources in a group (multi-select)
+  void selectGroupMembers(String groupId) {
+    final group = state.groups[groupId];
+    if (group == null || group.sourceIds.isEmpty) return;
+
+    // Set first source as active if none selected
+    final firstSourceId = group.sourceIds.first;
+    final newActiveId = state.activeSourceId ?? firstSourceId;
+
+    // Select all sources in the group
+    final newSelectedIds = Set<String>.from(group.sourceIds);
+
+    state = state.copyWith(
+      activeSourceId: newActiveId,
+      selectedSourceIds: newSelectedIds,
+    );
   }
 
   /// Add source to existing group

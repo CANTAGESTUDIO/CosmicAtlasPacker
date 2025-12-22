@@ -192,45 +192,51 @@ class _SingleSpritePropertiesState
           const SizedBox(height: 8),
           _PropertyRow(
             label: 'ID',
-            child: TextField(
-              controller: _idController,
-              style: const TextStyle(
-                fontSize: 11,
-                color: EditorColors.iconDefault,
+            child: Focus(
+              onKeyEvent: (node, event) {
+                // Consume all key events to prevent shortcuts from intercepting
+                return KeyEventResult.skipRemainingHandlers;
+              },
+              child: TextField(
+                controller: _idController,
+                style: const TextStyle(
+                  fontSize: 11,
+                  color: EditorColors.iconDefault,
+                ),
+                decoration: InputDecoration(
+                  isDense: true,
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 8,
+                  ),
+                  filled: true,
+                  fillColor: EditorColors.inputBackground,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(3),
+                    borderSide: BorderSide(
+                      color: _hasIdError ? EditorColors.error : EditorColors.border,
+                    ),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(3),
+                    borderSide: BorderSide(
+                      color: _hasIdError ? EditorColors.error : EditorColors.border,
+                    ),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(3),
+                    borderSide: BorderSide(
+                      color: _hasIdError ? EditorColors.error : EditorColors.primary,
+                    ),
+                  ),
+                  errorText: _hasIdError ? 'ID must be unique' : null,
+                  errorStyle: const TextStyle(fontSize: 10),
+                ),
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9_]')),
+                ],
+                onSubmitted: _onIdChanged,
               ),
-              decoration: InputDecoration(
-                isDense: true,
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 8,
-                ),
-                filled: true,
-                fillColor: EditorColors.inputBackground,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(3),
-                  borderSide: BorderSide(
-                    color: _hasIdError ? EditorColors.error : EditorColors.border,
-                  ),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(3),
-                  borderSide: BorderSide(
-                    color: _hasIdError ? EditorColors.error : EditorColors.border,
-                  ),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(3),
-                  borderSide: BorderSide(
-                    color: _hasIdError ? EditorColors.error : EditorColors.primary,
-                  ),
-                ),
-                errorText: _hasIdError ? 'ID must be unique' : null,
-                errorStyle: const TextStyle(fontSize: 10),
-              ),
-              inputFormatters: [
-                FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9_]')),
-              ],
-              onSubmitted: _onIdChanged,
             ),
           ),
           const SizedBox(height: 16),
@@ -564,48 +570,55 @@ class _EditableNumberField extends StatelessWidget {
         Expanded(
           child: SizedBox(
             height: 24,
-            child: TextField(
-              controller: controller,
-              style: const TextStyle(
-                fontSize: 11,
-                color: EditorColors.iconDefault,
-              ),
-              decoration: InputDecoration(
-                isDense: true,
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 6,
-                  vertical: 6,
-                ),
-                filled: true,
-                fillColor: EditorColors.inputBackground,
-                hintText: hintText,
-                hintStyle: TextStyle(
-                  fontSize: 11,
-                  color: EditorColors.iconDisabled.withValues(alpha: 0.7),
-                  fontStyle: FontStyle.italic,
-                ),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(3),
-                  borderSide: BorderSide(color: EditorColors.border),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(3),
-                  borderSide: BorderSide(color: EditorColors.border),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(3),
-                  borderSide: const BorderSide(color: EditorColors.primary),
-                ),
-              ),
-              keyboardType: TextInputType.number,
-              inputFormatters: [
-                FilteringTextInputFormatter.allow(RegExp(r'[0-9]')),
-              ],
-              onSubmitted: (_) => onChanged(),
-              onEditingComplete: () {
-                onChanged();
-                FocusScope.of(context).unfocus();
+            // Wrap with Focus to prevent keyboard shortcuts from intercepting
+            child: Focus(
+              onKeyEvent: (node, event) {
+                // Consume all key events to prevent shortcuts from intercepting
+                return KeyEventResult.skipRemainingHandlers;
               },
+              child: TextField(
+                controller: controller,
+                style: const TextStyle(
+                  fontSize: 11,
+                  color: EditorColors.iconDefault,
+                ),
+                decoration: InputDecoration(
+                  isDense: true,
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 6,
+                  ),
+                  filled: true,
+                  fillColor: EditorColors.inputBackground,
+                  hintText: hintText,
+                  hintStyle: TextStyle(
+                    fontSize: 11,
+                    color: EditorColors.iconDisabled.withValues(alpha: 0.7),
+                    fontStyle: FontStyle.italic,
+                  ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(3),
+                    borderSide: BorderSide(color: EditorColors.border),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(3),
+                    borderSide: BorderSide(color: EditorColors.border),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(3),
+                    borderSide: const BorderSide(color: EditorColors.primary),
+                  ),
+                ),
+                keyboardType: TextInputType.number,
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'[0-9]')),
+                ],
+                onSubmitted: (_) => onChanged(),
+                onEditingComplete: () {
+                  onChanged();
+                  FocusScope.of(context).unfocus();
+                },
+              ),
             ),
           ),
         ),

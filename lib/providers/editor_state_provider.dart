@@ -72,3 +72,42 @@ final showGridSliceDialogProvider = StateProvider<VoidCallback?>((ref) => null);
 
 /// Provider for Background Remove dialog callback (set by EditorScreen)
 final showBackgroundRemoveDialogProvider = StateProvider<VoidCallback?>((ref) => null);
+
+/// Sprite panel thumbnail zoom level (percentage)
+/// Controls the size of sprite thumbnails in the bottom panel
+final spriteThumbnailZoomProvider = StateProvider<double>((ref) => 100.0);
+
+/// Sprite thumbnail zoom presets
+class SpriteThumbnailZoomPresets {
+  static const List<double> values = [50, 75, 100, 125, 150, 200];
+  static const double min = 50;
+  static const double max = 200;
+  static const double step = 25;
+  static const double defaultValue = 100;
+
+  /// Get next zoom level (zoom in)
+  static double zoomIn(double current) {
+    final index = values.indexOf(current);
+    if (index == -1) {
+      // Find nearest higher value
+      for (final value in values) {
+        if (value > current) return value;
+      }
+      return max;
+    }
+    return index < values.length - 1 ? values[index + 1] : max;
+  }
+
+  /// Get previous zoom level (zoom out)
+  static double zoomOut(double current) {
+    final index = values.indexOf(current);
+    if (index == -1) {
+      // Find nearest lower value
+      for (int i = values.length - 1; i >= 0; i--) {
+        if (values[i] < current) return values[i];
+      }
+      return min;
+    }
+    return index > 0 ? values[index - 1] : min;
+  }
+}

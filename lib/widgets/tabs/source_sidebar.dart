@@ -145,6 +145,13 @@ class SourceSidebar extends ConsumerWidget {
                     onUngroup: () {
                       ref.read(multiImageProvider.notifier).ungroupSources(group.id);
                     },
+                    onGroupRename: (newName) {
+                      ref.read(multiImageProvider.notifier).renameGroup(group.id, newName);
+                    },
+                    onSelectMembers: () {
+                      // Select all sources in this group
+                      ref.read(multiImageProvider.notifier).selectGroupMembers(group.id);
+                    },
                   ),
 
                 // Ungrouped sources
@@ -187,6 +194,8 @@ class _GroupItem extends StatelessWidget {
   final void Function(String sourceId, String newName) onSourceRename;
   final VoidCallback onToggleExpand;
   final VoidCallback onUngroup;
+  final void Function(String newName)? onGroupRename;
+  final VoidCallback? onSelectMembers;
 
   const _GroupItem({
     required this.group,
@@ -199,6 +208,8 @@ class _GroupItem extends StatelessWidget {
     required this.onSourceRename,
     required this.onToggleExpand,
     required this.onUngroup,
+    this.onGroupRename,
+    this.onSelectMembers,
   });
 
   int get _totalSpriteCount {
@@ -207,6 +218,16 @@ class _GroupItem extends StatelessWidget {
       count += multiSpriteState.countForSource(source.id);
     }
     return count;
+  }
+
+  /// Check if any member of this group is selected
+  bool get _hasSelectedMember {
+    for (final source in sources) {
+      if (selectedIds.contains(source.id)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   @override
@@ -220,8 +241,11 @@ class _GroupItem extends StatelessWidget {
           sourceCount: sources.length,
           spriteCount: _totalSpriteCount,
           isExpanded: group.isExpanded,
+          isSelected: _hasSelectedMember,
           onToggle: onToggleExpand,
           onUngroup: onUngroup,
+          onRename: onGroupRename,
+          onSelectMembers: onSelectMembers,
         ),
 
         // Child sources (when expanded)
@@ -252,21 +276,28 @@ class _GroupItem extends StatelessWidget {
 }
 
 /// Group header with expand/collapse toggle (Photoshop-style)
+/// Supports double-click to rename
 class _GroupHeader extends StatefulWidget {
   final String name;
   final int sourceCount;
   final int spriteCount;
   final bool isExpanded;
+  final bool isSelected;
   final VoidCallback onToggle;
   final VoidCallback onUngroup;
+  final void Function(String newName)? onRename;
+  final VoidCallback? onSelectMembers;
 
   const _GroupHeader({
     required this.name,
     required this.sourceCount,
     required this.spriteCount,
     required this.isExpanded,
+    this.isSelected = false,
     required this.onToggle,
     required this.onUngroup,
+    this.onRename,
+    this.onSelectMembers,
   });
 
   @override
@@ -275,6 +306,100 @@ class _GroupHeader extends StatefulWidget {
 
 class _GroupHeaderState extends State<_GroupHeader> {
   bool _isHovered = false;
+  bool _isEditing = false;
+  TextEditingController? _editController;
+  FocusNode? _editFocusNode;
+
+  @override
+  void initState() {
+    super.initState();
+    _editController = TextEditingController(text: widget.name);
+    _editFocusNode = FocusNode();
+    _editFocusNode!.addListener(_onFocusChange);
+  }
+
+  @override
+  void dispose() {
+    _editController?.dispose();
+    _editFocusNode?.removeListener(_onFocusChange);
+    _editFocusNode?.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(_GroupHeader oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.name != widget.name && !_isEditing) {
+      _editController?.text = widget.name;
+    }
+  }
+
+  void _onFocusChange() {
+    if (_editFocusNode != null && !_editFocusNode!.hasFocus && _isEditing) {
+      _finishEditing();
+    }
+  }
+
+  void _startEditing() {
+    if (widget.onRename == null || _editController == null) return;
+    setState(() {
+      _isEditing = true;
+      _editController!.text = widget.name;
+      _editController!.selection = TextSelection(
+        baseOffset: 0,
+        extentOffset: widget.name.length,
+      );
+    });
+    Future.microtask(() => _editFocusNode?.requestFocus());
+  }
+
+  void _finishEditing() {
+    if (!_isEditing || _editController == null) return;
+    final newName = _editController!.text.trim();
+    setState(() => _isEditing = false);
+    if (newName.isNotEmpty && newName != widget.name) {
+      widget.onRename?.call(newName);
+    }
+  }
+
+  Widget _buildEditField() {
+    // Wrap with Focus to prevent keyboard shortcuts from intercepting keys
+    return Focus(
+      onKeyEvent: (node, event) {
+        // Consume all key events to prevent shortcuts from intercepting
+        return KeyEventResult.skipRemainingHandlers;
+      },
+      child: SizedBox(
+        height: 16,
+        child: TextField(
+          controller: _editController,
+          focusNode: _editFocusNode,
+          style: const TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w500,
+            color: EditorColors.iconDefault,
+          ),
+          decoration: InputDecoration(
+            isDense: true,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(2),
+              borderSide: BorderSide(color: EditorColors.warning),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(2),
+              borderSide: BorderSide(color: EditorColors.warning, width: 1.5),
+            ),
+            filled: true,
+            fillColor: EditorColors.surface,
+          ),
+          onSubmitted: (_) => _finishEditing(),
+          onEditingComplete: _finishEditing,
+          textInputAction: TextInputAction.done,
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -282,15 +407,19 @@ class _GroupHeaderState extends State<_GroupHeader> {
       onEnter: (_) => setState(() => _isHovered = true),
       onExit: (_) => setState(() => _isHovered = false),
       child: GestureDetector(
-        onTap: widget.onToggle,
+        // Click on main area = select group members (disabled when editing)
+        onTap: _isEditing ? null : widget.onSelectMembers,
+        onDoubleTap: _isEditing ? null : _startEditing,
         child: Container(
           height: 28,
           margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
           padding: const EdgeInsets.symmetric(horizontal: 4),
           decoration: BoxDecoration(
-            color: _isHovered
-                ? EditorColors.warning.withValues(alpha: 0.1)
-                : EditorColors.surface.withValues(alpha: 0.5),
+            color: widget.isSelected
+                ? EditorColors.warning.withValues(alpha: 0.2)
+                : _isHovered
+                    ? EditorColors.warning.withValues(alpha: 0.1)
+                    : EditorColors.surface.withValues(alpha: 0.5),
             border: Border(
               left: BorderSide(
                 color: EditorColors.warning,
@@ -301,13 +430,29 @@ class _GroupHeaderState extends State<_GroupHeader> {
           ),
           child: Row(
             children: [
-              // Expand/Collapse icon
-              Icon(
-                widget.isExpanded ? Icons.expand_more : Icons.chevron_right,
-                size: 16,
-                color: EditorColors.iconDefault,
-              ),
-              const SizedBox(width: 2),
+              // Expand/Collapse icon - only this icon toggles expand/collapse
+              if (!_isEditing)
+                GestureDetector(
+                  onTap: widget.onToggle,
+                  behavior: HitTestBehavior.opaque,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
+                    child: Icon(
+                      widget.isExpanded ? Icons.expand_more : Icons.chevron_right,
+                      size: 16,
+                      color: EditorColors.iconDefault,
+                    ),
+                  ),
+                )
+              else
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
+                  child: Icon(
+                    widget.isExpanded ? Icons.expand_more : Icons.chevron_right,
+                    size: 16,
+                    color: EditorColors.iconDefault,
+                  ),
+                ),
               // Folder icon
               Icon(
                 widget.isExpanded ? Icons.folder_open : Icons.folder,
@@ -315,17 +460,19 @@ class _GroupHeaderState extends State<_GroupHeader> {
                 color: EditorColors.warning,
               ),
               const SizedBox(width: 6),
-              // Group name
+              // Group name (editable on double-click)
               Expanded(
-                child: Text(
-                  widget.name,
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w500,
-                    color: EditorColors.iconDefault,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
+                child: _isEditing
+                    ? _buildEditField()
+                    : Text(
+                        widget.name,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                          color: EditorColors.iconDefault,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
               ),
               // Source count badge
               Container(
@@ -508,10 +655,11 @@ class _SourceItemState extends State<_SourceItem> {
   }
 
   Color _getBackgroundColor() {
-    if (widget.isActive) {
-      return EditorColors.panelBackground;
-    } else if (widget.isSelected) {
+    // isSelected takes priority when multi-selecting (includes active item)
+    if (widget.isSelected) {
       return EditorColors.primary.withValues(alpha: 0.15);
+    } else if (widget.isActive) {
+      return EditorColors.panelBackground;
     } else if (_isHovered) {
       return EditorColors.surface.withValues(alpha: 0.8);
     }
@@ -519,10 +667,11 @@ class _SourceItemState extends State<_SourceItem> {
   }
 
   Color _getBorderColor() {
-    if (widget.isActive) {
+    // isSelected takes priority when multi-selecting (includes active item)
+    if (widget.isSelected) {
       return EditorColors.primary;
-    } else if (widget.isSelected) {
-      return EditorColors.primary.withValues(alpha: 0.5);
+    } else if (widget.isActive) {
+      return EditorColors.primary;
     }
     return Colors.transparent;
   }

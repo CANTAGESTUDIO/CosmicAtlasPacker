@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:reorderable_grid_view/reorderable_grid_view.dart';
 
 import '../../models/sprite_region.dart';
+import '../../providers/editor_state_provider.dart';
 import '../../providers/multi_image_provider.dart';
 import '../../providers/multi_sprite_provider.dart';
 import '../../providers/sprite_provider.dart';
@@ -137,6 +138,9 @@ class _SpriteListPanelState extends ConsumerState<SpriteListPanel> {
             ),
           ],
           const Spacer(),
+          // Zoom controls for sprite thumbnails
+          _buildSpriteZoomControls(),
+          const SizedBox(width: 8),
           // Actions - use multiSpriteProvider
           _buildActionButton(
             icon: Icons.select_all,
@@ -161,6 +165,52 @@ class _SpriteListPanelState extends ConsumerState<SpriteListPanel> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildSpriteZoomControls() {
+    final zoomLevel = ref.watch(spriteThumbnailZoomProvider);
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Zoom out button
+        _buildActionButton(
+          icon: Icons.remove,
+          tooltip: 'Zoom Out',
+          onPressed: zoomLevel <= SpriteThumbnailZoomPresets.min
+              ? null
+              : () {
+                  final current = ref.read(spriteThumbnailZoomProvider);
+                  final target = SpriteThumbnailZoomPresets.zoomOut(current);
+                  ref.read(spriteThumbnailZoomProvider.notifier).state = target;
+                },
+        ),
+        // Zoom level display
+        Container(
+          width: 40,
+          alignment: Alignment.center,
+          child: Text(
+            '${zoomLevel.round()}%',
+            style: const TextStyle(
+              fontSize: 10,
+              color: EditorColors.iconDefault,
+            ),
+          ),
+        ),
+        // Zoom in button
+        _buildActionButton(
+          icon: Icons.add,
+          tooltip: 'Zoom In',
+          onPressed: zoomLevel >= SpriteThumbnailZoomPresets.max
+              ? null
+              : () {
+                  final current = ref.read(spriteThumbnailZoomProvider);
+                  final target = SpriteThumbnailZoomPresets.zoomIn(current);
+                  ref.read(spriteThumbnailZoomProvider.notifier).state = target;
+                },
+        ),
+      ],
     );
   }
 
@@ -295,7 +345,9 @@ class _SpriteListPanelState extends ConsumerState<SpriteListPanel> {
     Set<String> selectedIds,
     Map<String, List<int>> duplicateIds,
   ) {
-    const itemSize = 72.0;
+    // Calculate item size based on zoom level (base: 72px at 100%)
+    final zoomLevel = ref.watch(spriteThumbnailZoomProvider);
+    final itemSize = 72.0 * (zoomLevel / 100.0);
     const spacing = 6.0;
 
     return LayoutBuilder(

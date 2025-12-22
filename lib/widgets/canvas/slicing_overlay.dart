@@ -12,6 +12,7 @@ import '../../providers/history_provider.dart';
 import '../../providers/multi_image_provider.dart';
 import '../../providers/multi_sprite_provider.dart';
 import '../../theme/editor_colors.dart';
+import 'source_image_viewer.dart' show TransformedOverlayScope;
 
 /// Overlay for manual slicing - handles drag selection and sprite visualization
 class SlicingOverlay extends ConsumerStatefulWidget {
@@ -80,27 +81,49 @@ class _SlicingOverlayState extends ConsumerState<SlicingOverlay> {
       );
     }
 
+    // Check if we're inside TransformedOverlayScope (full viewport mode)
+    final scope = TransformedOverlayScope.of(context);
+
     return MouseRegion(
       cursor: _getCursor(toolMode, isSpacePressed),
       child: GestureDetector(
         behavior: HitTestBehavior.translucent,
-        onPanStart: (details) => _handlePanStart(details, toolMode),
-        onPanUpdate: (details) => _handlePanUpdate(details, toolMode),
+        onPanStart: (details) => _handlePanStart(details, toolMode, scope),
+        onPanUpdate: (details) => _handlePanUpdate(details, toolMode, scope),
         onPanEnd: (details) => _handlePanEnd(details, toolMode),
-        onTapUp: (details) => _handleTap(details, toolMode),
-        child: CustomPaint(
-          size: widget.imageSize,
-          painter: _SlicingPainter(
-            sprites: sprites,
-            selectedIds: multiSpriteState.selectedIds,
-            dragRect: _dragRect,
-            isDragging: _isDragging,
-            isSelectionDrag: _isSelectionDrag,
-            showPivots: true,
-            isDraggingPivot: _isDraggingPivot,
-            pivotDragSpriteId: _pivotDragSpriteId,
-          ),
-        ),
+        onTapUp: (details) => _handleTap(details, toolMode, scope),
+        child: scope != null
+            // Full viewport mode - use Transform to position content
+            ? SizedBox.expand(
+                child: CustomPaint(
+                  painter: _SlicingPainter(
+                    sprites: sprites,
+                    selectedIds: multiSpriteState.selectedIds,
+                    dragRect: _dragRect,
+                    isDragging: _isDragging,
+                    isSelectionDrag: _isSelectionDrag,
+                    showPivots: true,
+                    isDraggingPivot: _isDraggingPivot,
+                    pivotDragSpriteId: _pivotDragSpriteId,
+                    transform: scope.transform,
+                    imageSize: scope.imageSize,
+                  ),
+                ),
+              )
+            // Legacy mode - fixed image size
+            : CustomPaint(
+                size: widget.imageSize,
+                painter: _SlicingPainter(
+                  sprites: sprites,
+                  selectedIds: multiSpriteState.selectedIds,
+                  dragRect: _dragRect,
+                  isDragging: _isDragging,
+                  isSelectionDrag: _isSelectionDrag,
+                  showPivots: true,
+                  isDraggingPivot: _isDraggingPivot,
+                  pivotDragSpriteId: _pivotDragSpriteId,
+                ),
+              ),
       ),
     );
   }
@@ -118,18 +141,26 @@ class _SlicingOverlayState extends ConsumerState<SlicingOverlay> {
     }
   }
 
-  void _handlePanStart(DragStartDetails details, ToolMode mode) {
+  /// Convert local position to image coordinates based on scope
+  Offset _toImageCoords(Offset localPos, TransformedOverlayScope? scope) {
+    if (scope != null) {
+      return scope.viewportToImage(localPos);
+    }
+    return localPos;
+  }
+
+  void _handlePanStart(DragStartDetails details, ToolMode mode, TransformedOverlayScope? scope) {
     // If Space is pressed, let InteractiveViewer handle panning
     final isSpacePressed = ref.read(isSpacePressedProvider);
     if (isSpacePressed) return;
 
-    final localPos = details.localPosition;
+    final localPos = _toImageCoords(details.localPosition, scope);
     final activeSource = ref.read(activeSourceProvider);
     if (activeSource == null) return;
 
     // Check for pivot handle hit first (only in select mode)
     if (mode == ToolMode.select) {
-      final hitSprite = _hitTestPivotHandle(localPos);
+      final hitSprite = _hitTestPivotHandle(localPos, scope);
       if (hitSprite != null) {
         setState(() {
           _isDraggingPivot = true;
@@ -169,14 +200,14 @@ class _SlicingOverlayState extends ConsumerState<SlicingOverlay> {
     });
   }
 
-  void _handlePanUpdate(DragUpdateDetails details, ToolMode mode) {
+  void _handlePanUpdate(DragUpdateDetails details, ToolMode mode, TransformedOverlayScope? scope) {
     // If Space is pressed, let InteractiveViewer handle panning
     final isSpacePressed = ref.read(isSpacePressedProvider);
     if (isSpacePressed) return;
 
     // Handle pivot drag
     if (_isDraggingPivot && _pivotDragSpriteId != null) {
-      final localPos = details.localPosition;
+      final localPos = _toImageCoords(details.localPosition, scope);
       final sprite = ref.read(multiSpriteProvider.notifier).getSpriteById(_pivotDragSpriteId!);
       if (sprite != null) {
         final rect = sprite.sourceRect;
@@ -195,17 +226,17 @@ class _SlicingOverlayState extends ConsumerState<SlicingOverlay> {
 
     // Handle selection drag (box selection in Select mode)
     if (_isSelectionDrag && _dragStart != null) {
-      final localPos = details.localPosition;
-      final clampedPos = _clampToImageBounds(localPos);
+      final localPos = _toImageCoords(details.localPosition, scope);
+      // Don't clamp - allow selection outside image bounds
       setState(() {
-        _dragRect = Rect.fromPoints(_dragStart!, clampedPos);
+        _dragRect = Rect.fromPoints(_dragStart!, localPos);
       });
       return;
     }
 
     if (mode != ToolMode.rectSlice || _dragStart == null) return;
 
-    final localPos = details.localPosition;
+    final localPos = _toImageCoords(details.localPosition, scope);
     var clampedPos = _clampToImageBounds(localPos);
 
     // Shift key: constrain to square (1:1 aspect ratio)
@@ -327,10 +358,10 @@ class _SlicingOverlayState extends ConsumerState<SlicingOverlay> {
     }).toList();
   }
 
-  void _handleTap(TapUpDetails details, ToolMode mode) {
+  void _handleTap(TapUpDetails details, ToolMode mode, TransformedOverlayScope? scope) {
     if (mode != ToolMode.select) return;
 
-    final localPos = details.localPosition;
+    final localPos = _toImageCoords(details.localPosition, scope);
     final activeSource = ref.read(activeSourceProvider);
     if (activeSource == null) return;
 
@@ -383,8 +414,13 @@ class _SlicingOverlayState extends ConsumerState<SlicingOverlay> {
   }
 
   /// Hit test for pivot handle on selected sprites
-  SpriteRegion? _hitTestPivotHandle(Offset point) {
+  SpriteRegion? _hitTestPivotHandle(Offset point, TransformedOverlayScope? scope) {
     final multiSpriteState = ref.read(multiSpriteProvider);
+
+    // Adjust hit radius based on zoom level (larger radius when zoomed out)
+    final hitRadius = scope != null
+        ? _pivotHitRadius / scope.scale
+        : _pivotHitRadius;
 
     // Only check selected sprites
     for (final sprite in multiSpriteState.selectedSprites) {
@@ -397,7 +433,7 @@ class _SlicingOverlayState extends ConsumerState<SlicingOverlay> {
 
       // Check if point is within hit radius of pivot handle
       final distance = (Offset(pivotX, pivotY) - point).distance;
-      if (distance <= _pivotHitRadius) {
+      if (distance <= hitRadius) {
         return sprite;
       }
     }
@@ -441,6 +477,8 @@ class _SlicingPainter extends CustomPainter {
   final bool showPivots;
   final bool isDraggingPivot;
   final String? pivotDragSpriteId;
+  final Matrix4? transform;
+  final Size? imageSize;
 
   _SlicingPainter({
     required this.sprites,
@@ -451,22 +489,62 @@ class _SlicingPainter extends CustomPainter {
     this.showPivots = true,
     this.isDraggingPivot = false,
     this.pivotDragSpriteId,
+    this.transform,
+    this.imageSize,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
-    // Draw registered sprites
+    // If transform is provided, apply it to render in viewport space
+    if (transform != null) {
+      canvas.save();
+
+      // Convert Matrix4 to canvas transformation
+      final matrix = transform!;
+      final translateX = matrix.entry(0, 3);
+      final translateY = matrix.entry(1, 3);
+      final scaleX = matrix.entry(0, 0);
+      final scaleY = matrix.entry(1, 1);
+
+      canvas.translate(translateX, translateY);
+      canvas.scale(scaleX, scaleY);
+    }
+
+    // Draw registered sprites (in image coordinates)
     for (final sprite in sprites) {
       _drawSpriteRegion(canvas, sprite);
     }
 
     // Draw current drag selection (rect slicing mode only, not selection drag)
+    // This is in image coordinates
     if (isDragging && dragRect != null && !isSelectionDrag) {
       _drawDragSelection(canvas, dragRect!);
     }
 
+    // Restore canvas before drawing selection box (needs viewport coordinates)
+    if (transform != null) {
+      canvas.restore();
+    }
+
     // Draw selection box for box selection in Select mode
-    if (isSelectionDrag && dragRect != null) {
+    // This should be drawn in viewport coordinates (on top of everything)
+    if (isSelectionDrag && dragRect != null && transform != null) {
+      // Convert dragRect from image coords to viewport coords
+      final matrix = transform!;
+      final translateX = matrix.entry(0, 3);
+      final translateY = matrix.entry(1, 3);
+      final scaleX = matrix.entry(0, 0);
+      final scaleY = matrix.entry(1, 1);
+
+      final viewportRect = Rect.fromLTRB(
+        dragRect!.left * scaleX + translateX,
+        dragRect!.top * scaleY + translateY,
+        dragRect!.right * scaleX + translateX,
+        dragRect!.bottom * scaleY + translateY,
+      );
+      _drawSelectionBox(canvas, viewportRect);
+    } else if (isSelectionDrag && dragRect != null) {
+      // No transform - draw directly
       _drawSelectionBox(canvas, dragRect!);
     }
   }
@@ -677,7 +755,9 @@ class _SlicingPainter extends CustomPainter {
         oldDelegate.isSelectionDrag != isSelectionDrag ||
         oldDelegate.showPivots != showPivots ||
         oldDelegate.isDraggingPivot != isDraggingPivot ||
-        oldDelegate.pivotDragSpriteId != pivotDragSpriteId;
+        oldDelegate.pivotDragSpriteId != pivotDragSpriteId ||
+        oldDelegate.transform != transform ||
+        oldDelegate.imageSize != imageSize;
   }
 }
 
