@@ -1,12 +1,12 @@
 import 'dart:typed_data';
-import 'dart:ui';
+import 'dart:ui' as ui;
 
 import 'sprite_data.dart';
 
 /// Simple sprite region data for POC (without freezed)
 class SpriteRegion {
   final String id;
-  final Rect sourceRect;
+  final ui.Rect sourceRect;
   final bool isSelected;
   final PivotPoint pivot;
 
@@ -20,8 +20,11 @@ class SpriteRegion {
   /// Stored separately from source image for independent manipulation
   final Uint8List? imageBytes;
 
+  /// Cached ui.Image for rendering (created from imageBytes)
+  final ui.Image? uiImage;
+
   /// Original position before any movement (for undo/reference)
-  final Offset? originalPosition;
+  final ui.Offset? originalPosition;
 
   const SpriteRegion({
     required this.id,
@@ -31,12 +34,13 @@ class SpriteRegion {
     this.sourceFileId,
     this.nineSlice,
     this.imageBytes,
+    this.uiImage,
     this.originalPosition,
   });
 
   SpriteRegion copyWith({
     String? id,
-    Rect? sourceRect,
+    ui.Rect? sourceRect,
     bool? isSelected,
     PivotPoint? pivot,
     String? sourceFileId,
@@ -44,7 +48,9 @@ class SpriteRegion {
     bool clearNineSlice = false,
     Uint8List? imageBytes,
     bool clearImageBytes = false,
-    Offset? originalPosition,
+    ui.Image? uiImage,
+    bool clearUiImage = false,
+    ui.Offset? originalPosition,
     bool clearOriginalPosition = false,
   }) {
     return SpriteRegion(
@@ -55,6 +61,7 @@ class SpriteRegion {
       sourceFileId: sourceFileId ?? this.sourceFileId,
       nineSlice: clearNineSlice ? null : (nineSlice ?? this.nineSlice),
       imageBytes: clearImageBytes ? null : (imageBytes ?? this.imageBytes),
+      uiImage: clearUiImage ? null : (uiImage ?? this.uiImage),
       originalPosition: clearOriginalPosition ? null : (originalPosition ?? this.originalPosition),
     );
   }
@@ -75,10 +82,10 @@ class SpriteRegion {
   int get height => sourceRect.height.round();
 
   /// Get pivot position in canvas coordinates
-  Offset get pivotPosition {
+  ui.Offset get pivotPosition {
     final x = sourceRect.left + sourceRect.width * pivot.x;
     final y = sourceRect.top + sourceRect.height * pivot.y;
-    return Offset(x, y);
+    return ui.Offset(x, y);
   }
 
   @override

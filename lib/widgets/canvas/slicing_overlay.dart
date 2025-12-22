@@ -2,16 +2,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../commands/editor_command.dart';
+import '../../commands/commands.dart';
 import '../../models/enums/pivot_preset.dart';
 import '../../models/enums/tool_mode.dart';
 import '../../models/sprite_data.dart';
 import '../../models/sprite_region.dart';
+import '../../models/sprite_slice_mode.dart';
 import '../../providers/editor_state_provider.dart';
 import '../../providers/history_provider.dart';
 import '../../providers/multi_image_provider.dart';
 import '../../providers/multi_sprite_provider.dart';
+import '../../services/sprite_separator_service.dart';
 import '../../theme/editor_colors.dart';
+import '../dialogs/separate_confirm_dialog.dart';
 import 'source_image_viewer.dart' show TransformedOverlayScope;
 
 /// Overlay for manual slicing - handles drag selection and sprite visualization
@@ -48,11 +51,20 @@ class _SlicingOverlayState extends ConsumerState<SlicingOverlay> {
   /// Whether currently dragging a pivot handle
   bool _isDraggingPivot = false;
 
+  /// Whether currently dragging a sprite to move it
+  bool _isDraggingSprite = false;
+
+  /// Previous drag position for calculating delta
+  Offset? _lastDragPosition;
+
   /// Hit radius for pivot handle (in pixels)
   static const double _pivotHitRadius = 8.0;
 
   /// Store original pivot when starting pivot drag (for undo)
   PivotPoint? _originalPivot;
+
+  /// Store original positions of sprites being dragged (for undo)
+  Map<String, Rect>? _originalSpriteRects;
 
   @override
   Widget build(BuildContext context) {
@@ -170,10 +182,22 @@ class _SlicingOverlayState extends ConsumerState<SlicingOverlay> {
         return;
       }
 
-      // Check if clicking on an existing sprite (don't start selection drag)
-      final clickedSprite = ref.read(multiSpriteProvider.notifier).hitTest(activeSource.id, localPos);
+      // Check if clicking on an existing sprite (with pivot priority)
+      final clickedSprite = ref.read(multiSpriteProvider.notifier).hitTestWithPivotPriority(
+        activeSource.id,
+        localPos,
+      );
+
       if (clickedSprite != null) {
-        return; // Let tap handle this
+        // Check slice mode - if in region mode, show warning dialog
+        if (activeSource.sliceMode == SpriteSliceMode.region) {
+          _handleRegionModeDrag(activeSource, clickedSprite, localPos);
+          return;
+        }
+
+        // Start sprite drag (separated mode or no slice mode)
+        _startSpriteDrag(clickedSprite, localPos);
+        return;
       }
 
       // Start selection drag (box selection) on empty area
@@ -221,6 +245,20 @@ class _SlicingOverlayState extends ConsumerState<SlicingOverlay> {
         final newPivot = PivotPoint(x: snappedX, y: snappedY, preset: preset);
         ref.read(multiSpriteProvider.notifier).updateSpritePivot(_pivotDragSpriteId!, newPivot);
       }
+      return;
+    }
+
+    // Handle sprite drag (moving sprites)
+    if (_isDraggingSprite && _lastDragPosition != null) {
+      final localPos = _toImageCoords(details.localPosition, scope);
+      final delta = localPos - _lastDragPosition!;
+
+      // Move all selected sprites
+      ref.read(multiSpriteProvider.notifier).moveSelectedSprites(delta);
+
+      setState(() {
+        _lastDragPosition = localPos;
+      });
       return;
     }
 
@@ -272,6 +310,106 @@ class _SlicingOverlayState extends ConsumerState<SlicingOverlay> {
     return newEnd;
   }
 
+  /// Start sprite drag operation
+  void _startSpriteDrag(SpriteRegion clickedSprite, Offset localPos) {
+    final selectedIds = ref.read(multiSpriteProvider).selectedIds;
+
+    // If clicking on unselected sprite, select it first
+    if (!selectedIds.contains(clickedSprite.id)) {
+      ref.read(multiSpriteProvider.notifier).selectSprite(clickedSprite.id);
+    }
+
+    // Store original positions for undo
+    final currentSelectedIds = ref.read(multiSpriteProvider).selectedIds;
+    final sprites = ref.read(multiSpriteProvider).allSprites;
+    _originalSpriteRects = {};
+    for (final sprite in sprites) {
+      if (currentSelectedIds.contains(sprite.id)) {
+        _originalSpriteRects![sprite.id] = sprite.sourceRect;
+      }
+    }
+
+    setState(() {
+      _isDraggingSprite = true;
+      _lastDragPosition = localPos;
+    });
+  }
+
+  /// Handle drag in region mode - show confirmation dialog and separate if confirmed
+  Future<void> _handleRegionModeDrag(
+    LoadedSourceImage activeSource,
+    SpriteRegion clickedSprite,
+    Offset localPos,
+  ) async {
+    // Show confirmation dialog
+    final confirmed = await SeparateConfirmDialog.show(context);
+    if (!confirmed) return;
+
+    // Separate sprites
+    await _separateSprites(activeSource);
+
+    // After separation, start the drag
+    _startSpriteDrag(clickedSprite, localPos);
+  }
+
+  /// Separate sprites from source image (convert from region to separated mode)
+  Future<void> _separateSprites(LoadedSourceImage activeSource) async {
+    final separatorService = const SpriteSeparatorService();
+    final sprites = ref.read(multiSpriteProvider).getSpritesForSource(activeSource.id);
+
+    if (sprites.isEmpty) return;
+
+    try {
+      // Get previous state for undo
+      final previousSprites = List<SpriteRegion>.from(sprites);
+      final previousSourceState = SourceImageSnapshot(
+        uiImage: activeSource.effectiveUiImage,
+        rawImage: activeSource.effectiveRawImage,
+        sliceMode: activeSource.sliceMode,
+      );
+
+      // Perform separation
+      final result = await separatorService.separateSprites(
+        sourceImage: activeSource.effectiveRawImage,
+        sprites: sprites,
+      );
+
+      // Create new state snapshot
+      final newSourceState = SourceImageSnapshot(
+        uiImage: result.backgroundUiImage,
+        rawImage: result.backgroundCanvas,
+        sliceMode: SpriteSliceMode.separated,
+      );
+
+      // Create command for undo support
+      final command = SeparateSpritesCommand(
+        sourceId: activeSource.id,
+        previousSourceState: previousSourceState,
+        previousSprites: previousSprites,
+        newSourceState: newSourceState,
+        newSprites: result.separatedSprites,
+        onUpdateProcessedImage: (sourceId, uiImage, rawImage) {
+          ref.read(multiImageProvider.notifier).updateProcessedImage(
+            sourceId,
+            processedRaw: rawImage,
+            processedUi: uiImage,
+          );
+        },
+        onSetSliceMode: (sourceId, mode) {
+          ref.read(multiImageProvider.notifier).setSliceMode(sourceId, mode);
+        },
+        onReplaceSprites: (sourceId, sprites) {
+          ref.read(multiSpriteProvider.notifier).replaceSpritesForSource(sourceId, sprites);
+        },
+      );
+
+      // Execute through history for undo support
+      ref.read(historyProvider.notifier).execute(command);
+    } catch (e) {
+      debugPrint('[SlicingOverlay] Error separating sprites: $e');
+    }
+  }
+
   void _handlePanEnd(DragEndDetails details, ToolMode mode) {
     final activeSource = ref.read(activeSourceProvider);
 
@@ -302,6 +440,18 @@ class _SlicingOverlayState extends ConsumerState<SlicingOverlay> {
         _isDraggingPivot = false;
         _pivotDragSpriteId = null;
         _originalPivot = null;
+      });
+      return;
+    }
+
+    // Handle sprite drag end (moving sprites)
+    if (_isDraggingSprite && _originalSpriteRects != null) {
+      // TODO: Add undo command for sprite movement
+      // For now, just clear the drag state
+      setState(() {
+        _isDraggingSprite = false;
+        _lastDragPosition = null;
+        _originalSpriteRects = null;
       });
       return;
     }
@@ -577,20 +727,26 @@ class _SlicingPainter extends CustomPainter {
     final isSelected = selectedIds.contains(sprite.id);
     final rect = sprite.sourceRect;
 
-    // Fill color (semi-transparent)
-    final fillPaint = Paint()
-      ..color = isSelected
-          ? EditorColors.selectionFill.withValues(alpha: 0.3)
-          : EditorColors.spriteFill.withValues(alpha: 0.15)
-      ..style = PaintingStyle.fill;
+    // If sprite has ui.Image, draw it at the sprite position
+    if (sprite.uiImage != null) {
+      final imagePaint = Paint()
+        ..filterQuality = FilterQuality.medium;
 
-    // Border color
+      // Draw the sprite image at its current position
+      canvas.drawImageRect(
+        sprite.uiImage!,
+        Rect.fromLTWH(0, 0, sprite.uiImage!.width.toDouble(), sprite.uiImage!.height.toDouble()),
+        rect,
+        imagePaint,
+      );
+    }
+
+    // Draw border for selection visualization
     final borderPaint = Paint()
-      ..color = isSelected ? EditorColors.selectionBorder : EditorColors.spriteBorder
+      ..color = isSelected ? EditorColors.selectionBorder : EditorColors.spriteBorder.withValues(alpha: 0.5)
       ..style = PaintingStyle.stroke
       ..strokeWidth = isSelected ? 2.0 : 1.0;
 
-    canvas.drawRect(rect, fillPaint);
     canvas.drawRect(rect, borderPaint);
 
     // Draw sprite ID label

@@ -417,32 +417,63 @@ class ExportService {
       final sourceRect = sprite.sourceRect;
       final sourceId = sprite.sourceFileId;
 
-      // Get source image for this sprite
-      final sourceImage = sourceImages[sourceId] as img.Image?;
-      if (sourceImage == null) continue;
+      // If sprite has extracted image data, use it directly
+      if (sprite.hasImageData && sprite.imageBytes != null) {
+        final spriteWidth = sprite.width;
+        final spriteHeight = sprite.height;
+        final imageBytes = sprite.imageBytes!;
 
-      // Extract sprite from source image and copy to atlas
-      for (int y = 0; y < packed.height; y++) {
-        for (int x = 0; x < packed.width; x++) {
-          final srcX = sourceRect.left.round() + x;
-          final srcY = sourceRect.top.round() + y;
+        // Copy from sprite's extracted image bytes (RGBA format)
+        for (int y = 0; y < spriteHeight && y < packed.height; y++) {
+          for (int x = 0; x < spriteWidth && x < packed.width; x++) {
+            final srcOffset = (y * spriteWidth + x) * 4;
+            if (srcOffset + 3 < imageBytes.length) {
+              final r = imageBytes[srcOffset];
+              final g = imageBytes[srcOffset + 1];
+              final b = imageBytes[srcOffset + 2];
+              final a = imageBytes[srcOffset + 3];
 
-          // Bounds check for source
-          if (srcX >= 0 &&
-              srcX < sourceImage.width &&
-              srcY >= 0 &&
-              srcY < sourceImage.height) {
-            final pixel = sourceImage.getPixel(srcX, srcY);
+              final dstX = packed.x + x;
+              final dstY = packed.y + y;
 
-            final dstX = packed.x + x;
-            final dstY = packed.y + y;
+              // Bounds check for destination
+              if (dstX >= 0 &&
+                  dstX < atlasImage.width &&
+                  dstY >= 0 &&
+                  dstY < atlasImage.height) {
+                atlasImage.setPixel(dstX, dstY, img.ColorRgba8(r, g, b, a));
+              }
+            }
+          }
+        }
+      } else {
+        // Fallback: extract from source image (for sprites without extracted data)
+        final sourceImage = sourceImages[sourceId] as img.Image?;
+        if (sourceImage == null) continue;
 
-            // Bounds check for destination
-            if (dstX >= 0 &&
-                dstX < atlasImage.width &&
-                dstY >= 0 &&
-                dstY < atlasImage.height) {
-              atlasImage.setPixel(dstX, dstY, pixel);
+        // Extract sprite from source image and copy to atlas
+        for (int y = 0; y < packed.height; y++) {
+          for (int x = 0; x < packed.width; x++) {
+            final srcX = sourceRect.left.round() + x;
+            final srcY = sourceRect.top.round() + y;
+
+            // Bounds check for source
+            if (srcX >= 0 &&
+                srcX < sourceImage.width &&
+                srcY >= 0 &&
+                srcY < sourceImage.height) {
+              final pixel = sourceImage.getPixel(srcX, srcY);
+
+              final dstX = packed.x + x;
+              final dstY = packed.y + y;
+
+              // Bounds check for destination
+              if (dstX >= 0 &&
+                  dstX < atlasImage.width &&
+                  dstY >= 0 &&
+                  dstY < atlasImage.height) {
+                atlasImage.setPixel(dstX, dstY, pixel);
+              }
             }
           }
         }

@@ -6,6 +6,7 @@ import '../../models/sprite_region.dart';
 import '../../theme/editor_colors.dart';
 
 /// Thumbnail widget for displaying a cropped sprite from source image
+/// If sprite has uiImage (extracted image), it will use that instead of cropping from sourceImage
 class SpriteThumbnail extends StatelessWidget {
   final SpriteRegion sprite;
   final ui.Image sourceImage;
@@ -65,6 +66,7 @@ class SpriteThumbnail extends StatelessWidget {
                           painter: _SpriteThumbnailPainter(
                             sourceImage: sourceImage,
                             sourceRect: sprite.sourceRect,
+                            spriteImage: sprite.uiImage,
                           ),
                         );
                       },
@@ -121,10 +123,12 @@ class SpriteThumbnail extends StatelessWidget {
 class _SpriteThumbnailPainter extends CustomPainter {
   final ui.Image sourceImage;
   final Rect sourceRect;
+  final ui.Image? spriteImage;
 
   _SpriteThumbnailPainter({
     required this.sourceImage,
     required this.sourceRect,
+    this.spriteImage,
   });
 
   @override
@@ -156,6 +160,24 @@ class _SpriteThumbnailPainter extends CustomPainter {
     // Draw checkerboard background for transparency
     _drawCheckerboard(canvas, destRect);
 
+    // If sprite has its own extracted image, use it directly
+    if (spriteImage != null) {
+      final spriteSourceRect = Rect.fromLTWH(
+        0,
+        0,
+        spriteImage!.width.toDouble(),
+        spriteImage!.height.toDouble(),
+      );
+      canvas.drawImageRect(
+        spriteImage!,
+        spriteSourceRect,
+        destRect,
+        Paint()..filterQuality = FilterQuality.medium,
+      );
+      return;
+    }
+
+    // Fallback: crop from source image
     // Ensure source rect is within image bounds
     final clampedSourceRect = Rect.fromLTRB(
       sourceRect.left.clamp(0, sourceImage.width.toDouble()),
@@ -199,6 +221,7 @@ class _SpriteThumbnailPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _SpriteThumbnailPainter oldDelegate) {
     return sourceImage != oldDelegate.sourceImage ||
-        sourceRect != oldDelegate.sourceRect;
+        sourceRect != oldDelegate.sourceRect ||
+        spriteImage != oldDelegate.spriteImage;
   }
 }

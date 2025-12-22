@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../models/sprite_region.dart';
+import '../../models/sprite_slice_mode.dart';
 import '../../providers/editor_state_provider.dart';
 import '../../providers/multi_image_provider.dart';
 import '../../providers/multi_sprite_provider.dart';
@@ -95,15 +96,32 @@ class MultiSourcePanel extends ConsumerWidget {
       activeSource.height.toDouble(),
     );
 
-    // Use ORIGINAL image for source panel (not processed)
-    return SourceImageViewer(
-      image: activeSource.originalUiImage,
-      showGrid: showGrid,
-      gridSize: gridSize,
-      overlay: SlicingOverlay(
-        imageSize: imageSize,
-        transform: Matrix4.identity(),
-      ),
+    // Choose image based on slice mode:
+    // - Region mode: show original image (sprites are just rectangles on top)
+    // - Separated mode: show processed image (background canvas with sprites erased)
+    final displayImage = activeSource.sliceMode == SpriteSliceMode.separated
+        ? activeSource.effectiveUiImage
+        : activeSource.originalUiImage;
+
+    return Stack(
+      children: [
+        SourceImageViewer(
+          image: displayImage,
+          showGrid: showGrid,
+          gridSize: gridSize,
+          overlay: SlicingOverlay(
+            imageSize: imageSize,
+            transform: Matrix4.identity(),
+          ),
+        ),
+        // Slice mode badge (only show when sliced)
+        if (activeSource.sliceMode.isSliced)
+          Positioned(
+            top: 8,
+            left: 8,
+            child: _SliceModeBadge(mode: activeSource.sliceMode),
+          ),
+      ],
     );
   }
 
@@ -561,5 +579,55 @@ class _GridCellOverlayPainter extends CustomPainter {
         scale != oldDelegate.scale ||
         imageSize != oldDelegate.imageSize ||
         containerSize != oldDelegate.containerSize;
+  }
+}
+
+/// Badge showing current slice mode (Region / Separated)
+class _SliceModeBadge extends StatelessWidget {
+  final SpriteSliceMode mode;
+
+  const _SliceModeBadge({required this.mode});
+
+  @override
+  Widget build(BuildContext context) {
+    final isRegion = mode == SpriteSliceMode.region;
+    final backgroundColor = isRegion
+        ? EditorColors.primary.withValues(alpha: 0.9)
+        : EditorColors.secondary.withValues(alpha: 0.9);
+    final icon = isRegion ? Icons.grid_view : Icons.content_cut;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(4),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.3),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            icon,
+            size: 12,
+            color: Colors.white,
+          ),
+          const SizedBox(width: 4),
+          Text(
+            mode.displayNameKo,
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: Colors.white,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

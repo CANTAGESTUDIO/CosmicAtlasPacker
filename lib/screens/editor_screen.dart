@@ -11,6 +11,7 @@ import '../core/constants/editor_constants.dart';
 import '../models/atlas_project.dart';
 import '../models/enums/tool_mode.dart';
 import '../models/sprite_data.dart';
+import '../models/sprite_slice_mode.dart';
 import '../providers/editor_state_provider.dart';
 import '../providers/export_provider.dart';
 import '../providers/history_provider.dart';
@@ -664,6 +665,9 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
     // Use multiSpriteProvider for multi-image support
     ref.read(multiSpriteProvider.notifier).addFromGridSlice(activeSource.id, result);
 
+    // Set slice mode to region (sprites are defined but not separated)
+    ref.read(multiImageProvider.notifier).setSliceMode(activeSource.id, SpriteSliceMode.region);
+
     // Also update legacy spriteProvider for backward compatibility
     final previousSprites = ref.read(spriteProvider).sprites.toList();
     final command = GridSliceCommand(
@@ -719,12 +723,19 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
 
       final result = dialogResult.sliceResult;
 
-      // If background was removed, update the source image
-      if (dialogResult.processedImage != null) {
+      // Update source image with background canvas (sprites extracted)
+      // This allows sprites to be moved without leaving holes
+      if (result.backgroundCanvas != null) {
+        await _updateSourceImageWithProcessedForSource(source.id, result.backgroundCanvas!);
+      } else if (dialogResult.processedImage != null) {
+        // Fallback: If background was removed but no canvas, use processed image
         await _updateSourceImageWithProcessedForSource(source.id, dialogResult.processedImage!);
       }
 
-      ref.read(multiSpriteProvider.notifier).addFromAutoSlice(source.id, result);
+      await ref.read(multiSpriteProvider.notifier).addFromAutoSlice(source.id, result);
+
+      // Set slice mode to region (sprites are defined but not separated)
+      ref.read(multiImageProvider.notifier).setSliceMode(source.id, SpriteSliceMode.region);
 
       if (mounted) {
         final message = result.filteredCount > 0
@@ -753,8 +764,11 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
         // Re-run auto slice with same settings for each image
         final sliceResult = await _runAutoSliceForSource(source, dialogResult);
         if (sliceResult != null) {
-          // If background removal was enabled, update the source image too
-          if (dialogResult.removeBackground && dialogResult.bgColorTolerance != null) {
+          // Update source image with background canvas (sprites extracted)
+          if (sliceResult.backgroundCanvas != null) {
+            await _updateSourceImageWithProcessedForSource(source.id, sliceResult.backgroundCanvas!);
+          } else if (dialogResult.removeBackground && dialogResult.bgColorTolerance != null) {
+            // Fallback: If no canvas but background removal enabled
             final processedImage = _removeBackgroundWithTolerance(
               source.rawImage,
               dialogResult.bgColorTolerance!,
@@ -762,7 +776,11 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
             await _updateSourceImageWithProcessedForSource(source.id, processedImage);
           }
 
-          ref.read(multiSpriteProvider.notifier).addFromAutoSlice(source.id, sliceResult);
+          await ref.read(multiSpriteProvider.notifier).addFromAutoSlice(source.id, sliceResult);
+
+          // Set slice mode to region (sprites are defined but not separated)
+          ref.read(multiImageProvider.notifier).setSliceMode(source.id, SpriteSliceMode.region);
+
           totalSprites += sliceResult.spriteCount;
           processedCount++;
         }

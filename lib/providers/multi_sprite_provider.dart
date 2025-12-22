@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/sprite_data.dart';
 import '../models/sprite_region.dart';
-import '../services/auto_slicer_service.dart';
+import '../services/auto_slicer_service.dart' show AutoSliceResult, SpriteImageUtils;
 import '../services/grid_slicer_service.dart';
 import 'multi_image_provider.dart';
 
@@ -191,6 +191,27 @@ class MultiSpriteNotifier extends StateNotifier<MultiSpriteState> {
     state = state.copyWith(spritesBySource: updatedSprites);
   }
 
+  /// Replace all sprites for a specific source
+  /// Used for undo/redo operations
+  void replaceSpritesForSource(String sourceId, List<SpriteRegion> sprites) {
+    final updatedSprites = Map<String, List<SpriteRegion>>.from(state.spritesBySource);
+
+    if (sprites.isEmpty) {
+      updatedSprites.remove(sourceId);
+    } else {
+      updatedSprites[sourceId] = sprites;
+    }
+
+    // Update selection to only include sprites that still exist
+    final existingIds = sprites.map((s) => s.id).toSet();
+    final updatedSelection = state.selectedIds.where(existingIds.contains).toSet();
+
+    state = state.copyWith(
+      spritesBySource: updatedSprites,
+      selectedIds: updatedSelection,
+    );
+  }
+
   /// Add sprites from grid slicing result for a specific source
   void addFromGridSlice(String sourceId, GridSliceResult result) {
     int currentId = state.nextId;
@@ -215,18 +236,33 @@ class MultiSpriteNotifier extends StateNotifier<MultiSpriteState> {
   }
 
   /// Add sprites from auto slicing result for a specific source
-  void addFromAutoSlice(String sourceId, AutoSliceResult result) {
+  ///
+  /// This method creates ui.Image for each sprite from imageBytes for canvas rendering.
+  Future<void> addFromAutoSlice(String sourceId, AutoSliceResult result) async {
     int currentId = state.nextId;
 
-    // Create sprites with source file ID
-    final spritesWithSource = result.sprites.map((s) {
+    // Create sprites with source file ID and ui.Image
+    final spritesWithSource = <SpriteRegion>[];
+
+    for (final s in result.sprites) {
       final newSprite = s.copyWith(
         id: 'sprite_$currentId',
         sourceFileId: sourceId,
       );
       currentId++;
-      return newSprite;
-    }).toList();
+
+      // Create ui.Image from imageBytes for canvas rendering
+      if (newSprite.hasImageData) {
+        final uiImage = await SpriteImageUtils.createUiImage(
+          newSprite.imageBytes!,
+          newSprite.width,
+          newSprite.height,
+        );
+        spritesWithSource.add(newSprite.copyWith(uiImage: uiImage));
+      } else {
+        spritesWithSource.add(newSprite);
+      }
+    }
 
     final updatedSprites = Map<String, List<SpriteRegion>>.from(state.spritesBySource);
     updatedSprites[sourceId] = spritesWithSource;
@@ -309,6 +345,90 @@ class MultiSpriteNotifier extends StateNotifier<MultiSpriteState> {
     }
 
     state = state.copyWith(spritesBySource: updatedSprites);
+  }
+
+  /// Move sprite by delta offset
+  void moveSprite(String id, Offset delta) {
+    final updatedSprites = <String, List<SpriteRegion>>{};
+
+    for (final entry in state.spritesBySource.entries) {
+      updatedSprites[entry.key] = entry.value.map((s) {
+        if (s.id == id) {
+          final currentRect = s.sourceRect;
+          return s.copyWith(
+            sourceRect: currentRect.translate(delta.dx, delta.dy),
+          );
+        }
+        return s;
+      }).toList();
+    }
+
+    state = state.copyWith(spritesBySource: updatedSprites);
+  }
+
+  /// Move multiple selected sprites by delta offset
+  void moveSelectedSprites(Offset delta) {
+    if (!state.hasSelection) return;
+
+    final updatedSprites = <String, List<SpriteRegion>>{};
+
+    for (final entry in state.spritesBySource.entries) {
+      updatedSprites[entry.key] = entry.value.map((s) {
+        if (state.selectedIds.contains(s.id)) {
+          final currentRect = s.sourceRect;
+          return s.copyWith(
+            sourceRect: currentRect.translate(delta.dx, delta.dy),
+          );
+        }
+        return s;
+      }).toList();
+    }
+
+    state = state.copyWith(spritesBySource: updatedSprites);
+  }
+
+  /// Hit test with pivot priority (sprites with pivots closer to point are prioritized)
+  SpriteRegion? hitTestWithPivotPriority(String sourceId, Offset point) {
+    final sprites = state.getSpritesForSource(sourceId);
+    if (sprites.isEmpty) return null;
+
+    SpriteRegion? bestMatch;
+    double bestPivotDistance = double.infinity;
+    bool bestHasPivotHit = false;
+
+    for (final sprite in sprites.reversed) {
+      if (!sprite.sourceRect.contains(point)) continue;
+
+      // Calculate pivot position
+      final pivotPos = sprite.pivotPosition;
+      final pivotDistance = (pivotPos - point).distance;
+
+      // Check if point is near pivot (within 8 pixels)
+      const pivotHitRadius = 8.0;
+      final hasPivotHit = pivotDistance <= pivotHitRadius;
+
+      // Prioritize: 1) pivot hit, 2) closest pivot
+      if (hasPivotHit && !bestHasPivotHit) {
+        // This sprite has pivot hit, previous best doesn't
+        bestMatch = sprite;
+        bestPivotDistance = pivotDistance;
+        bestHasPivotHit = true;
+      } else if (hasPivotHit && bestHasPivotHit) {
+        // Both have pivot hit, choose closest
+        if (pivotDistance < bestPivotDistance) {
+          bestMatch = sprite;
+          bestPivotDistance = pivotDistance;
+        }
+      } else if (!bestHasPivotHit) {
+        // Neither has pivot hit, choose first match (top-most)
+        if (bestMatch == null) {
+          bestMatch = sprite;
+          bestPivotDistance = pivotDistance;
+        }
+      }
+    }
+
+    return bestMatch;
   }
 
   /// Get sprite by ID

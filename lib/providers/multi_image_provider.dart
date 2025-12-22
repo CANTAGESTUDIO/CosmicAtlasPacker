@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image/image.dart' as img;
 
 import '../models/image_group.dart';
+import '../models/sprite_slice_mode.dart';
 import '../services/image_loader_service.dart';
 
 /// Loaded source image with original and processed images separated
@@ -21,6 +22,8 @@ class LoadedSourceImage {
   final img.Image? processedRawImage;
   // 그룹 ID (null = 그룹 없음)
   final String? groupId;
+  // 슬라이스 상태 (none, region, separated)
+  final SpriteSliceMode sliceMode;
 
   const LoadedSourceImage({
     required this.id,
@@ -31,6 +34,7 @@ class LoadedSourceImage {
     this.processedUiImage,
     this.processedRawImage,
     this.groupId,
+    this.sliceMode = SpriteSliceMode.none,
   });
 
   /// Get dimensions from original image
@@ -60,6 +64,7 @@ class LoadedSourceImage {
     ui.Image? processedUiImage,
     img.Image? processedRawImage,
     String? groupId,
+    SpriteSliceMode? sliceMode,
     bool clearProcessed = false,
     bool clearGroup = false,
   }) {
@@ -72,6 +77,7 @@ class LoadedSourceImage {
       processedUiImage: clearProcessed ? null : (processedUiImage ?? this.processedUiImage),
       processedRawImage: clearProcessed ? null : (processedRawImage ?? this.processedRawImage),
       groupId: clearGroup ? null : (groupId ?? this.groupId),
+      sliceMode: sliceMode ?? this.sliceMode,
     );
   }
 }
@@ -604,6 +610,19 @@ class MultiImageNotifier extends StateNotifier<MultiImageState> {
     }).toList();
 
     state = state.copyWith(sources: updatedSources);
+  }
+
+  /// Set slice mode for a source
+  void setSliceMode(String sourceId, SpriteSliceMode mode) {
+    final updatedSources = state.sources.map((source) {
+      if (source.id == sourceId) {
+        return source.copyWith(sliceMode: mode);
+      }
+      return source;
+    }).toList();
+
+    state = state.copyWith(sources: updatedSources);
+    debugPrint('[MultiImageNotifier] Set slice mode for $sourceId to ${mode.name}');
   }
 
   /// Rename a source

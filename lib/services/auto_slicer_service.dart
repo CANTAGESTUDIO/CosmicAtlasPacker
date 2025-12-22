@@ -1,4 +1,5 @@
 import 'dart:collection';
+import 'dart:typed_data';
 import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
@@ -50,7 +51,7 @@ class AutoSliceConfig {
 
 /// Result of auto slicing operation
 class AutoSliceResult {
-  /// Generated sprite regions
+  /// Generated sprite regions (with extracted image bytes)
   final List<SpriteRegion> sprites;
 
   /// Total regions found (before filtering)
@@ -62,15 +63,27 @@ class AutoSliceResult {
   /// Processing time in milliseconds
   final int processingTimeMs;
 
+  /// Detected background color (RGBA)
+  final Color? detectedBackgroundColor;
+
+  /// Background canvas image (source with sprites erased, filled with bg color)
+  final img.Image? backgroundCanvas;
+
   const AutoSliceResult({
     required this.sprites,
     required this.totalRegionsFound,
     required this.filteredCount,
     required this.processingTimeMs,
+    this.detectedBackgroundColor,
+    this.backgroundCanvas,
   });
 
   /// Sprite count after filtering
   int get spriteCount => sprites.length;
+
+  /// Check if sprites were extracted with image data
+  /// In region mode, this returns false (image extraction happens during separation)
+  bool get hasExtractedImages => sprites.isNotEmpty && sprites.first.hasImageData;
 }
 
 /// Progress callback for auto slicing
@@ -83,6 +96,7 @@ class AutoSlicerService {
   /// Auto-slice image using flood fill algorithm
   ///
   /// This runs in an isolate to prevent UI blocking.
+  /// Returns sprites with extracted image data and a background canvas.
   Future<AutoSliceResult> autoSlice({
     required img.Image image,
     required AutoSliceConfig config,
@@ -108,10 +122,11 @@ class AutoSlicerService {
 
     onProgress?.call(0.9, 'Building sprite regions...');
 
-    // Convert bounding boxes to SpriteRegions
+    // Convert bounding boxes to SpriteRegions (region mode - no image data)
     final sprites = <SpriteRegion>[];
     for (int i = 0; i < isolateResult.boundingBoxes.length; i++) {
       final box = isolateResult.boundingBoxes[i];
+
       sprites.add(SpriteRegion(
         id: '${config.idPrefix}_$i',
         sourceRect: Rect.fromLTWH(
@@ -120,30 +135,46 @@ class AutoSlicerService {
           box.width.toDouble(),
           box.height.toDouble(),
         ),
+        // No imageBytes in region mode - separation happens later
+        originalPosition: Offset(box.left.toDouble(), box.top.toDouble()),
       ));
     }
 
     // Sort sprites by position (top-left to bottom-right)
-    sprites.sort((a, b) {
-      final yDiff = a.sourceRect.top.compareTo(b.sourceRect.top);
+    // Keep track of original indices for image data mapping
+    final indexedSprites = sprites.asMap().entries.toList();
+    indexedSprites.sort((a, b) {
+      final yDiff = a.value.sourceRect.top.compareTo(b.value.sourceRect.top);
       if (yDiff != 0) return yDiff;
-      return a.sourceRect.left.compareTo(b.sourceRect.left);
+      return a.value.sourceRect.left.compareTo(b.value.sourceRect.left);
     });
 
     // Re-assign IDs after sorting
     final sortedSprites = <SpriteRegion>[];
-    for (int i = 0; i < sprites.length; i++) {
-      sortedSprites.add(sprites[i].copyWith(id: '${config.idPrefix}_$i'));
+    for (int i = 0; i < indexedSprites.length; i++) {
+      sortedSprites.add(indexedSprites[i].value.copyWith(
+        id: '${config.idPrefix}_$i',
+      ));
+    }
+
+    // Convert background color (stored for later separation)
+    Color? bgColor;
+    if (isolateResult.backgroundColor != null) {
+      final bg = isolateResult.backgroundColor!;
+      bgColor = Color.fromARGB(bg[3], bg[0], bg[1], bg[2]);
     }
 
     stopwatch.stop();
     onProgress?.call(1.0, 'Complete!');
 
+    // Region mode: no backgroundCanvas - separation happens when user drags
     return AutoSliceResult(
       sprites: sortedSprites,
       totalRegionsFound: isolateResult.totalFound,
       filteredCount: isolateResult.filteredCount,
       processingTimeMs: stopwatch.elapsedMilliseconds,
+      detectedBackgroundColor: bgColor,
+      backgroundCanvas: null,
     );
   }
 
@@ -189,10 +220,14 @@ class _IsolateOutput {
   final int totalFound;
   final int filteredCount;
 
+  /// Detected background color (RGBA as int list [r,g,b,a])
+  final List<int>? backgroundColor;
+
   const _IsolateOutput({
     required this.boundingBoxes,
     required this.totalFound,
     required this.filteredCount,
+    this.backgroundColor,
   });
 }
 
@@ -212,13 +247,17 @@ class _BoundingBox {
 }
 
 /// Process image in isolate (static function required for compute)
+/// Region mode: Only detect bounding boxes, no image extraction
 _IsolateOutput _processImageInIsolate(_IsolateInput input) {
   final width = input.width;
   final height = input.height;
   final bytes = input.imageBytes;
   final config = input.config;
 
-  // Step 1: Extract alpha channel and binarize
+  // Step 1: Detect background color (stored for later separation)
+  final backgroundColor = _detectBackgroundColor(bytes, width, height, config.alphaThreshold);
+
+  // Step 2: Extract alpha channel and binarize
   final binaryMask = _createBinaryMask(
     bytes,
     width,
@@ -226,7 +265,7 @@ _IsolateOutput _processImageInIsolate(_IsolateInput input) {
     config.alphaThreshold,
   );
 
-  // Step 2: Find connected components using flood fill
+  // Step 3: Find connected components using flood fill
   final visited = List<bool>.filled(width * height, false);
   final boundingBoxes = <_BoundingBox>[];
   int totalFound = 0;
@@ -305,11 +344,84 @@ _IsolateOutput _processImageInIsolate(_IsolateInput input) {
     }
   }
 
+  // Region mode: No sprite image extraction, no background canvas creation
+  // Separation happens later when user drags a sprite
+
   return _IsolateOutput(
     boundingBoxes: boundingBoxes,
     totalFound: totalFound,
     filteredCount: totalFound - boundingBoxes.length,
+    backgroundColor: backgroundColor,
   );
+}
+
+/// Detect background color from image edges and transparent areas
+List<int> _detectBackgroundColor(
+  List<int> bytes,
+  int width,
+  int height,
+  int alphaThreshold,
+) {
+  // Count color occurrences in background areas (transparent pixels)
+  final colorCounts = <int, int>{};
+
+  for (int y = 0; y < height; y++) {
+    for (int x = 0; x < width; x++) {
+      final idx = (y * width + x) * 4;
+      final alpha = bytes[idx + 3];
+
+      // Consider transparent pixels as background
+      if (alpha < alphaThreshold) {
+        // Pack RGB into single int for counting (ignore alpha variations)
+        final colorKey = (bytes[idx] << 16) | (bytes[idx + 1] << 8) | bytes[idx + 2];
+        colorCounts[colorKey] = (colorCounts[colorKey] ?? 0) + 1;
+      }
+    }
+  }
+
+  // Also sample edges (first/last row and column)
+  for (int x = 0; x < width; x++) {
+    // Top row
+    final topIdx = x * 4;
+    final topKey = (bytes[topIdx] << 16) | (bytes[topIdx + 1] << 8) | bytes[topIdx + 2];
+    colorCounts[topKey] = (colorCounts[topKey] ?? 0) + 1;
+
+    // Bottom row
+    final bottomIdx = ((height - 1) * width + x) * 4;
+    final bottomKey = (bytes[bottomIdx] << 16) | (bytes[bottomIdx + 1] << 8) | bytes[bottomIdx + 2];
+    colorCounts[bottomKey] = (colorCounts[bottomKey] ?? 0) + 1;
+  }
+
+  for (int y = 0; y < height; y++) {
+    // Left column
+    final leftIdx = (y * width) * 4;
+    final leftKey = (bytes[leftIdx] << 16) | (bytes[leftIdx + 1] << 8) | bytes[leftIdx + 2];
+    colorCounts[leftKey] = (colorCounts[leftKey] ?? 0) + 1;
+
+    // Right column
+    final rightIdx = (y * width + width - 1) * 4;
+    final rightKey = (bytes[rightIdx] << 16) | (bytes[rightIdx + 1] << 8) | bytes[rightIdx + 2];
+    colorCounts[rightKey] = (colorCounts[rightKey] ?? 0) + 1;
+  }
+
+  // Find most common color
+  int maxCount = 0;
+  int mostCommonColor = 0;
+
+  for (final entry in colorCounts.entries) {
+    if (entry.value > maxCount) {
+      maxCount = entry.value;
+      mostCommonColor = entry.key;
+    }
+  }
+
+  // Unpack to RGBA (with full alpha for solid background)
+  return [
+    (mostCommonColor >> 16) & 0xFF,       // R
+    (mostCommonColor >> 8) & 0xFF,        // G
+    mostCommonColor & 0xFF,                // B
+    255,                                   // A (fully opaque)
+  ];
 }
 
 /// Create binary mask from alpha channel
@@ -331,4 +443,73 @@ List<bool> _createBinaryMask(
   }
 
   return mask;
+}
+
+/// Utility class for sprite image operations
+class SpriteImageUtils {
+  /// Create ui.Image from RGBA bytes
+  ///
+  /// [imageBytes] - RGBA pixel data
+  /// [width] - Image width in pixels
+  /// [height] - Image height in pixels
+  static Future<Image?> createUiImage(
+    Uint8List imageBytes,
+    int width,
+    int height,
+  ) async {
+    if (imageBytes.isEmpty || width <= 0 || height <= 0) {
+      return null;
+    }
+
+    final expectedLength = width * height * 4;
+    if (imageBytes.length < expectedLength) {
+      return null;
+    }
+
+    final codec = await instantiateImageCodec(
+      await _encodeRgbaToPng(imageBytes, width, height),
+    );
+    final frame = await codec.getNextFrame();
+    return frame.image;
+  }
+
+  /// Encode RGBA bytes to PNG format for ui.Image creation
+  static Future<Uint8List> _encodeRgbaToPng(
+    Uint8List rgbaBytes,
+    int width,
+    int height,
+  ) async {
+    final image = img.Image.fromBytes(
+      width: width,
+      height: height,
+      bytes: rgbaBytes.buffer,
+      order: img.ChannelOrder.rgba,
+      numChannels: 4,
+    );
+    return Uint8List.fromList(img.encodePng(image));
+  }
+
+  /// Create ui.Image for all sprites in list
+  ///
+  /// Returns a new list with uiImage populated
+  static Future<List<SpriteRegion>> createUiImagesForSprites(
+    List<SpriteRegion> sprites,
+  ) async {
+    final result = <SpriteRegion>[];
+
+    for (final sprite in sprites) {
+      if (sprite.hasImageData) {
+        final uiImage = await createUiImage(
+          sprite.imageBytes!,
+          sprite.width,
+          sprite.height,
+        );
+        result.add(sprite.copyWith(uiImage: uiImage));
+      } else {
+        result.add(sprite);
+      }
+    }
+
+    return result;
+  }
 }
