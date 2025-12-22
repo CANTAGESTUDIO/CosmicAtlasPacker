@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
@@ -47,6 +48,7 @@ class LoadedSourceImage {
 class MultiImageState {
   final List<LoadedSourceImage> sources;
   final String? activeSourceId;
+  final Set<String> selectedSourceIds; // 다중 선택 지원
   final bool isLoading;
   final String? error;
   final int _nextId;
@@ -54,6 +56,7 @@ class MultiImageState {
   const MultiImageState({
     this.sources = const [],
     this.activeSourceId,
+    this.selectedSourceIds = const {},
     this.isLoading = false,
     this.error,
     int nextId = 0,
@@ -62,6 +65,7 @@ class MultiImageState {
   MultiImageState copyWith({
     List<LoadedSourceImage>? sources,
     String? activeSourceId,
+    Set<String>? selectedSourceIds,
     bool? isLoading,
     String? error,
     int? nextId,
@@ -72,11 +76,20 @@ class MultiImageState {
       sources: sources ?? this.sources,
       activeSourceId:
           clearActiveSource ? null : (activeSourceId ?? this.activeSourceId),
+      selectedSourceIds: selectedSourceIds ?? this.selectedSourceIds,
       isLoading: isLoading ?? this.isLoading,
       error: clearError ? null : (error ?? this.error),
       nextId: nextId ?? _nextId,
     );
   }
+
+  /// Get selected sources in order
+  List<LoadedSourceImage> get selectedSources {
+    return sources.where((s) => selectedSourceIds.contains(s.id)).toList();
+  }
+
+  /// Check if a source is selected
+  bool isSelected(String id) => selectedSourceIds.contains(id);
 
   /// Get the currently active source image
   LoadedSourceImage? get activeSource {
@@ -343,9 +356,64 @@ class MultiImageNotifier extends StateNotifier<MultiImageState> {
     }
   }
 
+  /// Select a single source (일반 클릭: 활성화 + 선택 초기화)
+  void selectSource(String id) {
+    if (state.sources.any((s) => s.id == id)) {
+      state = state.copyWith(
+        activeSourceId: id,
+        selectedSourceIds: {id},
+      );
+    }
+  }
+
+  /// Toggle source selection (Cmd/Ctrl + 클릭)
+  void toggleSourceSelection(String id) {
+    if (!state.sources.any((s) => s.id == id)) return;
+
+    final newSelection = Set<String>.from(state.selectedSourceIds);
+    if (newSelection.contains(id)) {
+      newSelection.remove(id);
+      // 선택 해제 시 최소 1개는 유지
+      if (newSelection.isEmpty && state.sources.isNotEmpty) {
+        newSelection.add(state.activeSourceId ?? state.sources.first.id);
+      }
+    } else {
+      newSelection.add(id);
+    }
+    state = state.copyWith(selectedSourceIds: newSelection);
+  }
+
+  /// Select range of sources (Shift + 클릭)
+  void selectSourceRange(String fromId, String toId) {
+    final fromIndex = state.sources.indexWhere((s) => s.id == fromId);
+    final toIndex = state.sources.indexWhere((s) => s.id == toId);
+
+    if (fromIndex == -1 || toIndex == -1) return;
+
+    final startIdx = min(fromIndex, toIndex);
+    final endIdx = max(fromIndex, toIndex);
+
+    final rangeIds =
+        state.sources.sublist(startIdx, endIdx + 1).map((s) => s.id).toSet();
+
+    state = state.copyWith(
+      selectedSourceIds: {...state.selectedSourceIds, ...rangeIds},
+    );
+  }
+
+  /// Clear selection (활성 소스만 선택된 상태로)
+  void clearSelection() {
+    final activeId = state.activeSourceId;
+    state = state.copyWith(
+      selectedSourceIds: activeId != null ? {activeId} : {},
+    );
+  }
+
   /// Remove a source by ID
   void removeSource(String id) {
     final updatedSources = state.sources.where((s) => s.id != id).toList();
+    final updatedSelection = Set<String>.from(state.selectedSourceIds)
+      ..remove(id);
 
     String? newActiveId = state.activeSourceId;
     if (state.activeSourceId == id) {
@@ -353,9 +421,15 @@ class MultiImageNotifier extends StateNotifier<MultiImageState> {
       newActiveId = updatedSources.isNotEmpty ? updatedSources.first.id : null;
     }
 
+    // 선택이 비어있으면 활성 소스를 선택에 추가
+    if (updatedSelection.isEmpty && newActiveId != null) {
+      updatedSelection.add(newActiveId);
+    }
+
     state = state.copyWith(
       sources: updatedSources,
       activeSourceId: newActiveId,
+      selectedSourceIds: updatedSelection,
       clearActiveSource: newActiveId == null,
     );
   }
@@ -418,4 +492,10 @@ final sourceCountProvider = Provider<int>((ref) {
 /// Provider to check if loading
 final isLoadingSourcesProvider = Provider<bool>((ref) {
   return ref.watch(multiImageProvider).isLoading;
+});
+
+/// Provider for selected sources (다중 선택된 소스 목록)
+final selectedSourcesProvider = Provider<List<LoadedSourceImage>>((ref) {
+  final state = ref.watch(multiImageProvider);
+  return state.selectedSources;
 });

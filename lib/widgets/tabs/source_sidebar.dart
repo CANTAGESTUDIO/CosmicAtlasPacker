@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers/image_provider.dart';
@@ -30,12 +31,35 @@ class SourceSidebar extends ConsumerWidget {
     }
   }
 
+  /// Handle source item tap with keyboard modifiers
+  void _handleSourceTap(WidgetRef ref, String sourceId, bool isActive) {
+    final isShiftPressed = HardwareKeyboard.instance.isShiftPressed;
+    final isMetaPressed = HardwareKeyboard.instance.isMetaPressed;
+    final isControlPressed = HardwareKeyboard.instance.isControlPressed;
+
+    if (isShiftPressed) {
+      // Shift: 범위 선택
+      final activeId = ref.read(multiImageProvider).activeSourceId;
+      if (activeId != null) {
+        ref.read(multiImageProvider.notifier).selectSourceRange(activeId, sourceId);
+      }
+    } else if (isMetaPressed || isControlPressed) {
+      // Cmd/Ctrl: 토글 선택
+      ref.read(multiImageProvider.notifier).toggleSourceSelection(sourceId);
+    } else {
+      // 일반 클릭: 단일 선택 + 활성화
+      ref.read(multiImageProvider.notifier).selectSource(sourceId);
+      Future.microtask(() => _syncActiveSource(ref, clearSprites: true));
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final multiImageState = ref.watch(multiImageProvider);
     final multiSpriteState = ref.watch(multiSpriteProvider);
     final sources = multiImageState.sources;
     final activeId = multiImageState.activeSourceId;
+    final selectedIds = multiImageState.selectedSourceIds;
 
     return Container(
       width: 238,
@@ -59,9 +83,11 @@ class SourceSidebar extends ConsumerWidget {
             ),
             child: Row(
               children: [
-                const Text(
-                  'Sources',
-                  style: TextStyle(
+                Text(
+                  selectedIds.length > 1
+                      ? 'Sources (${selectedIds.length})'
+                      : 'Sources',
+                  style: const TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w500,
                     color: EditorColors.iconDefault,
@@ -88,18 +114,15 @@ class SourceSidebar extends ConsumerWidget {
               itemBuilder: (context, index) {
                 final source = sources[index];
                 final isActive = source.id == activeId;
+                final isSelected = selectedIds.contains(source.id);
                 final spriteCount = multiSpriteState.countForSource(source.id);
                 return _SourceItem(
                   image: source.uiImage,
                   fileName: source.fileName,
                   isActive: isActive,
+                  isSelected: isSelected,
                   spriteCount: spriteCount,
-                  onTap: () {
-                    if (!isActive) {
-                      ref.read(multiImageProvider.notifier).setActiveSource(source.id);
-                      Future.microtask(() => _syncActiveSource(ref, clearSprites: true));
-                    }
-                  },
+                  onTap: () => _handleSourceTap(ref, source.id, isActive),
                   onClose: () {
                     ref.read(multiImageProvider.notifier).removeSource(source.id);
                     Future.microtask(() => _syncActiveSource(ref, clearSprites: true));
@@ -119,6 +142,7 @@ class _SourceItem extends StatefulWidget {
   final dynamic image; // ui.Image
   final String fileName;
   final bool isActive;
+  final bool isSelected;
   final int spriteCount;
   final VoidCallback onTap;
   final VoidCallback onClose;
@@ -127,6 +151,7 @@ class _SourceItem extends StatefulWidget {
     required this.image,
     required this.fileName,
     required this.isActive,
+    required this.isSelected,
     required this.spriteCount,
     required this.onTap,
     required this.onClose,
@@ -138,6 +163,26 @@ class _SourceItem extends StatefulWidget {
 
 class _SourceItemState extends State<_SourceItem> {
   bool _isHovered = false;
+
+  Color _getBackgroundColor() {
+    if (widget.isActive) {
+      return EditorColors.panelBackground;
+    } else if (widget.isSelected) {
+      return EditorColors.primary.withValues(alpha: 0.15);
+    } else if (_isHovered) {
+      return EditorColors.surface.withValues(alpha: 0.8);
+    }
+    return Colors.transparent;
+  }
+
+  Color _getBorderColor() {
+    if (widget.isActive) {
+      return EditorColors.primary;
+    } else if (widget.isSelected) {
+      return EditorColors.primary.withValues(alpha: 0.5);
+    }
+    return Colors.transparent;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -151,12 +196,10 @@ class _SourceItemState extends State<_SourceItem> {
           margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
           decoration: BoxDecoration(
-            color: widget.isActive
-                ? EditorColors.panelBackground
-                : (_isHovered ? EditorColors.surface.withValues(alpha: 0.8) : Colors.transparent),
+            color: _getBackgroundColor(),
             border: Border(
               left: BorderSide(
-                color: widget.isActive ? EditorColors.primary : Colors.transparent,
+                color: _getBorderColor(),
                 width: 2,
               ),
             ),
