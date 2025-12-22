@@ -11,6 +11,7 @@ import '../canvas/source_image_viewer.dart';
 import '../tabs/source_sidebar.dart';
 
 /// Multi-source Panel - displays source images with vertical sidebar and slicing overlays
+/// NOTE: This panel shows ORIGINAL images only (no background removal applied)
 class MultiSourcePanel extends ConsumerWidget {
   const MultiSourcePanel({super.key});
 
@@ -19,18 +20,42 @@ class MultiSourcePanel extends ConsumerWidget {
     final multiImageState = ref.watch(multiImageProvider);
     final showGrid = ref.watch(showGridProvider);
     final gridSize = ref.watch(gridSizeProvider);
+    final selectedCount = ref.watch(selectedSourcesProvider).length;
 
-    return Row(
+    return Column(
       children: [
-        // Vertical sidebar for source images (like reference images in design tools)
-        if (multiImageState.hasImages) const SourceSidebar(),
-
-        // Content area
+        // Main content area
         Expanded(
-          child: _buildContent(context, ref, multiImageState, showGrid, gridSize),
+          child: Row(
+            children: [
+              // Vertical sidebar for source images (like reference images in design tools)
+              if (multiImageState.hasImages) const SourceSidebar(),
+
+              // Content area
+              Expanded(
+                child: _buildContent(context, ref, multiImageState, showGrid, gridSize),
+              ),
+            ],
+          ),
         ),
+
+        // Selection action bar (2개 이상 선택 시)
+        if (selectedCount > 1)
+          _SelectionActionBar(
+            selectedCount: selectedCount,
+            onMerge: () => _handleMerge(ref),
+          ),
       ],
     );
+  }
+
+  /// Handle merge action
+  void _handleMerge(WidgetRef ref) {
+    final selectedSources = ref.read(selectedSourcesProvider);
+    if (selectedSources.length < 2) return;
+
+    final sourceIds = selectedSources.map((s) => s.id).toList();
+    ref.read(multiImageProvider.notifier).createGroup(sourceIds);
   }
 
   Widget _buildContent(
@@ -69,8 +94,9 @@ class MultiSourcePanel extends ConsumerWidget {
       activeSource.height.toDouble(),
     );
 
+    // Use ORIGINAL image for source panel (not processed)
     return SourceImageViewer(
-      image: activeSource.uiImage,
+      image: activeSource.originalUiImage,
       showGrid: showGrid,
       gridSize: gridSize,
       overlay: SlicingOverlay(
@@ -105,21 +131,28 @@ class MultiSourcePanel extends ConsumerWidget {
   ) {
     final columnCount = _getColumnCount(sources.length);
 
-    return Container(
-      color: EditorColors.canvasBackground,
-      child: GridView.builder(
-        padding: const EdgeInsets.all(12),
-        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: columnCount,
-          childAspectRatio: 1.0,
-          crossAxisSpacing: 12,
-          mainAxisSpacing: 12,
+    return GestureDetector(
+      onTap: () {
+        // 빈 공간 클릭 시 다중 선택 해제 (활성 소스만 남김)
+        ref.read(multiImageProvider.notifier).clearSelection();
+      },
+      behavior: HitTestBehavior.translucent,
+      child: Container(
+        color: EditorColors.canvasBackground,
+        child: GridView.builder(
+          padding: const EdgeInsets.all(12),
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: columnCount,
+            childAspectRatio: 1.0,
+            crossAxisSpacing: 12,
+            mainAxisSpacing: 12,
+          ),
+          itemCount: sources.length,
+          itemBuilder: (context, index) {
+            final source = sources[index];
+            return _buildGridCell(context, ref, source);
+          },
         ),
-        itemCount: sources.length,
-        itemBuilder: (context, index) {
-          final source = sources[index];
-          return _buildGridCell(context, ref, source);
-        },
       ),
     );
   }
@@ -163,13 +196,13 @@ class MultiSourcePanel extends ConsumerWidget {
                   Positioned.fill(
                     child: Container(color: EditorColors.canvasBackground),
                   ),
-                  // Image centered
+                  // Image centered - Use ORIGINAL image
                   Center(
                     child: SizedBox(
                       width: imageSize.width * scale,
                       height: imageSize.height * scale,
                       child: RawImage(
-                        image: source.uiImage,
+                        image: source.originalUiImage,
                         fit: BoxFit.contain,
                       ),
                     ),
@@ -371,6 +404,127 @@ class MultiSourcePanel extends ConsumerWidget {
     if (ref.read(multiImageProvider).isLoading) return;
 
     ref.read(multiImageProvider.notifier).pickAndLoadImages();
+  }
+}
+
+/// Selection action bar shown when 2+ sources are selected
+class _SelectionActionBar extends StatelessWidget {
+  final int selectedCount;
+  final VoidCallback onMerge;
+
+  const _SelectionActionBar({
+    required this.selectedCount,
+    required this.onMerge,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 36,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: EditorColors.surface,
+        border: Border(
+          top: BorderSide(color: EditorColors.divider, width: 1),
+        ),
+      ),
+      child: Row(
+        children: [
+          // Selected count indicator
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: EditorColors.primary.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.check_circle_outline,
+                  size: 14,
+                  color: EditorColors.primary,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  '$selectedCount개 선택됨',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: EditorColors.primary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Spacer(),
+          // Merge button
+          _MergeButton(onTap: onMerge),
+        ],
+      ),
+    );
+  }
+}
+
+/// Merge button with hover effect
+class _MergeButton extends StatefulWidget {
+  final VoidCallback onTap;
+
+  const _MergeButton({required this.onTap});
+
+  @override
+  State<_MergeButton> createState() => _MergeButtonState();
+}
+
+class _MergeButtonState extends State<_MergeButton> {
+  bool _isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: _isHovered
+                ? EditorColors.primary
+                : EditorColors.primary.withValues(alpha: 0.9),
+            borderRadius: BorderRadius.circular(4),
+            boxShadow: _isHovered
+                ? [
+                    BoxShadow(
+                      color: EditorColors.primary.withValues(alpha: 0.3),
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
+                    ),
+                  ]
+                : null,
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.merge_type,
+                size: 14,
+                color: Colors.white,
+              ),
+              const SizedBox(width: 4),
+              const Text(
+                'Merge',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 

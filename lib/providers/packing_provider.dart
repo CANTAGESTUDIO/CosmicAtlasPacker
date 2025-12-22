@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/atlas_settings.dart';
+import '../models/sprite_region.dart';
 import '../services/bin_packing_service.dart';
 import '../services/export_service.dart';
 import '../services/image_loader_service.dart';
@@ -69,10 +70,65 @@ final binPackingServiceProvider = Provider<BinPackingService>((ref) {
   return BinPackingService();
 });
 
-/// Provider for packing result - automatically updates when active source sprites change
-/// Uses activeSourceSpritesProvider for multi-tab support (1 tab = 1 atlas)
+/// Provider to determine if we're in merge mode (group or multi-select)
+final isMergeModeProvider = Provider<bool>((ref) {
+  final multiImageState = ref.watch(multiImageProvider);
+  final selectedSources = multiImageState.selectedSources;
+
+  // Merge mode when:
+  // 1. Multiple sources selected (2+)
+  // 2. Active source is in a group
+  if (selectedSources.length > 1) return true;
+
+  final activeSource = multiImageState.activeSource;
+  if (activeSource != null && activeSource.groupId != null) {
+    return true;
+  }
+
+  return false;
+});
+
+/// Provider for sources to include in atlas (based on merge mode)
+final atlasSourcesProvider = Provider<List<LoadedSourceImage>>((ref) {
+  final multiImageState = ref.watch(multiImageProvider);
+  final selectedSources = multiImageState.selectedSources;
+
+  // Multi-select mode
+  if (selectedSources.length > 1) {
+    return selectedSources;
+  }
+
+  // Check if active source is in a group
+  final activeSource = multiImageState.activeSource;
+  if (activeSource != null && activeSource.groupId != null) {
+    // Return all sources in the same group
+    return multiImageState.getSourcesInGroup(activeSource.groupId!);
+  }
+
+  // Single source mode
+  if (activeSource != null) {
+    return [activeSource];
+  }
+
+  return [];
+});
+
+/// Provider for sprites to include in atlas (merged from all atlas sources)
+final atlasSpritesProvider = Provider<List<SpriteRegion>>((ref) {
+  final atlasSources = ref.watch(atlasSourcesProvider);
+  final multiSpriteState = ref.watch(multiSpriteProvider);
+
+  final allSprites = <SpriteRegion>[];
+  for (final source in atlasSources) {
+    allSprites.addAll(multiSpriteState.getSpritesForSource(source.id));
+  }
+
+  return allSprites;
+});
+
+/// Provider for packing result - supports both single and merge mode
 final packingResultProvider = Provider<PackingResult?>((ref) {
-  final sprites = ref.watch(activeSourceSpritesProvider);
+  final sprites = ref.watch(atlasSpritesProvider);
   final settings = ref.watch(atlasSettingsProvider);
   final packingService = ref.watch(binPackingServiceProvider);
 
@@ -134,23 +190,22 @@ final _exportServiceProvider = Provider<ExportService>((ref) {
 });
 
 /// Provider for atlas preview image (ui.Image)
-/// Automatically regenerates when active source sprites or source image changes
-/// Uses ONLY the active tab's sprites for atlas generation (1 tab = 1 atlas)
-/// Uses autoDispose to ensure fresh computation when dependencies change
+/// Automatically regenerates when atlas sources or sprites change
+/// Uses PROCESSED images (effectiveRawImage) for atlas generation
+/// Supports both single source and merge mode
 final atlasPreviewImageProvider = FutureProvider.autoDispose<ui.Image?>((ref) async {
-  final activeSprites = ref.watch(activeSourceSpritesProvider);
-  final activeSource = ref.watch(activeSourceProvider);
+  final atlasSources = ref.watch(atlasSourcesProvider);
+  final atlasSprites = ref.watch(atlasSpritesProvider);
   final settings = ref.watch(atlasSettingsProvider);
   final packingService = ref.watch(binPackingServiceProvider);
 
-  // Only use active tab's sprites (1 tab = 1 atlas)
-  if (activeSprites.isEmpty || activeSource == null) {
+  if (atlasSprites.isEmpty || atlasSources.isEmpty) {
     return null;
   }
 
-  // Pack only active source's sprites
+  // Pack sprites
   final packingResult = packingService.pack(
-    activeSprites,
+    atlasSprites,
     maxWidth: settings.maxWidth,
     maxHeight: settings.maxHeight,
     padding: settings.padding,
@@ -161,10 +216,12 @@ final atlasPreviewImageProvider = FutureProvider.autoDispose<ui.Image?>((ref) as
     return null;
   }
 
-  // Use only active source's image
-  final sourceImages = <String, dynamic>{
-    activeSource.id: activeSource.rawImage,
-  };
+  // Build source images map using PROCESSED images (effectiveRawImage)
+  final sourceImages = <String, dynamic>{};
+  for (final source in atlasSources) {
+    // Use effectiveRawImage: processed if available, otherwise original
+    sourceImages[source.id] = source.effectiveRawImage;
+  }
 
   // Generate atlas image using ExportService
   final exportService = ref.read(_exportServiceProvider);
@@ -176,4 +233,13 @@ final atlasPreviewImageProvider = FutureProvider.autoDispose<ui.Image?>((ref) as
   // Convert img.Image to ui.Image for rendering
   final imageLoader = ImageLoaderService();
   return imageLoader.convertToUiImage(atlasImage);
+});
+
+/// Provider for active source sprites (backward compatibility)
+final activeSourceSpritesProvider = Provider<List<SpriteRegion>>((ref) {
+  final activeSource = ref.watch(activeSourceProvider);
+  if (activeSource == null) return [];
+
+  final multiSpriteState = ref.watch(multiSpriteProvider);
+  return multiSpriteState.getSpritesForSource(activeSource.id);
 });

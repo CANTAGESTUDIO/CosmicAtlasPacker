@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../models/image_group.dart';
 import '../../providers/image_provider.dart';
 import '../../providers/multi_image_provider.dart';
 import '../../providers/multi_sprite_provider.dart';
@@ -9,6 +10,7 @@ import '../../providers/sprite_provider.dart';
 import '../../theme/editor_colors.dart';
 
 /// Vertical sidebar for managing multiple source images (like reference images in design tools)
+/// Supports group hierarchy with Photoshop-style collapse/expand
 class SourceSidebar extends ConsumerWidget {
   const SourceSidebar({super.key});
 
@@ -60,6 +62,10 @@ class SourceSidebar extends ConsumerWidget {
     final sources = multiImageState.sources;
     final activeId = multiImageState.activeSourceId;
     final selectedIds = multiImageState.selectedSourceIds;
+    final groups = multiImageState.groups;
+
+    // Build list items: groups first, then ungrouped sources
+    final groupedSourceIds = groups.values.expand((g) => g.sourceIds).toSet();
 
     return Container(
       width: 238,
@@ -106,32 +112,298 @@ class SourceSidebar extends ConsumerWidget {
             ),
           ),
 
-          // Source image list (vertical)
+          // Source image list (vertical) with groups
           Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              itemCount: sources.length,
-              itemBuilder: (context, index) {
-                final source = sources[index];
-                final isActive = source.id == activeId;
-                final isSelected = selectedIds.contains(source.id);
-                final spriteCount = multiSpriteState.countForSource(source.id);
-                return _SourceItem(
-                  image: source.uiImage,
-                  fileName: source.fileName,
-                  isActive: isActive,
-                  isSelected: isSelected,
-                  spriteCount: spriteCount,
-                  onTap: () => _handleSourceTap(ref, source.id, isActive),
-                  onClose: () {
-                    ref.read(multiImageProvider.notifier).removeSource(source.id);
-                    Future.microtask(() => _syncActiveSource(ref, clearSprites: true));
-                  },
-                );
+            child: GestureDetector(
+              onTap: () {
+                // 빈 공간 클릭 시 다중 선택 해제 (활성 소스만 남김)
+                ref.read(multiImageProvider.notifier).clearSelection();
               },
+              behavior: HitTestBehavior.translucent,
+              child: ListView(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                children: [
+                // Groups first
+                for (final group in groups.values)
+                  _GroupItem(
+                    group: group,
+                    sources: sources.where((s) => group.sourceIds.contains(s.id)).toList(),
+                    activeId: activeId,
+                    selectedIds: selectedIds,
+                    multiSpriteState: multiSpriteState,
+                    onSourceTap: (sourceId, isActive) => _handleSourceTap(ref, sourceId, isActive),
+                    onSourceClose: (sourceId) {
+                      ref.read(multiImageProvider.notifier).removeSource(sourceId);
+                      Future.microtask(() => _syncActiveSource(ref, clearSprites: true));
+                    },
+                    onToggleExpand: () {
+                      ref.read(multiImageProvider.notifier).toggleGroupExpansion(group.id);
+                    },
+                    onUngroup: () {
+                      ref.read(multiImageProvider.notifier).ungroupSources(group.id);
+                    },
+                  ),
+
+                // Ungrouped sources
+                for (final source in sources.where((s) => !groupedSourceIds.contains(s.id)))
+                  _SourceItem(
+                    image: source.originalUiImage,
+                    fileName: source.fileName,
+                    isActive: source.id == activeId,
+                    isSelected: selectedIds.contains(source.id),
+                    spriteCount: multiSpriteState.countForSource(source.id),
+                    hasProcessed: source.hasProcessedImage,
+                    onTap: () => _handleSourceTap(ref, source.id, source.id == activeId),
+                    onClose: () {
+                      ref.read(multiImageProvider.notifier).removeSource(source.id);
+                      Future.microtask(() => _syncActiveSource(ref, clearSprites: true));
+                    },
+                  ),
+                ],
+              ),
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Group item with collapsible header and child sources (Photoshop layer group style)
+class _GroupItem extends StatelessWidget {
+  final ImageGroup group;
+  final List<LoadedSourceImage> sources;
+  final String? activeId;
+  final Set<String> selectedIds;
+  final MultiSpriteState multiSpriteState;
+  final void Function(String sourceId, bool isActive) onSourceTap;
+  final void Function(String sourceId) onSourceClose;
+  final VoidCallback onToggleExpand;
+  final VoidCallback onUngroup;
+
+  const _GroupItem({
+    required this.group,
+    required this.sources,
+    required this.activeId,
+    required this.selectedIds,
+    required this.multiSpriteState,
+    required this.onSourceTap,
+    required this.onSourceClose,
+    required this.onToggleExpand,
+    required this.onUngroup,
+  });
+
+  int get _totalSpriteCount {
+    int count = 0;
+    for (final source in sources) {
+      count += multiSpriteState.countForSource(source.id);
+    }
+    return count;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Group header
+        _GroupHeader(
+          name: group.name,
+          sourceCount: sources.length,
+          spriteCount: _totalSpriteCount,
+          isExpanded: group.isExpanded,
+          onToggle: onToggleExpand,
+          onUngroup: onUngroup,
+        ),
+
+        // Child sources (when expanded)
+        if (group.isExpanded)
+          Padding(
+            padding: const EdgeInsets.only(left: 12),
+            child: Column(
+              children: [
+                for (final source in sources)
+                  _SourceItem(
+                    image: source.originalUiImage,
+                    fileName: source.fileName,
+                    isActive: source.id == activeId,
+                    isSelected: selectedIds.contains(source.id),
+                    spriteCount: multiSpriteState.countForSource(source.id),
+                    hasProcessed: source.hasProcessedImage,
+                    isGroupChild: true,
+                    onTap: () => onSourceTap(source.id, source.id == activeId),
+                    onClose: () => onSourceClose(source.id),
+                  ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// Group header with expand/collapse toggle (Photoshop-style)
+class _GroupHeader extends StatefulWidget {
+  final String name;
+  final int sourceCount;
+  final int spriteCount;
+  final bool isExpanded;
+  final VoidCallback onToggle;
+  final VoidCallback onUngroup;
+
+  const _GroupHeader({
+    required this.name,
+    required this.sourceCount,
+    required this.spriteCount,
+    required this.isExpanded,
+    required this.onToggle,
+    required this.onUngroup,
+  });
+
+  @override
+  State<_GroupHeader> createState() => _GroupHeaderState();
+}
+
+class _GroupHeaderState extends State<_GroupHeader> {
+  bool _isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      child: GestureDetector(
+        onTap: widget.onToggle,
+        child: Container(
+          height: 28,
+          margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          decoration: BoxDecoration(
+            color: _isHovered
+                ? EditorColors.warning.withValues(alpha: 0.1)
+                : EditorColors.surface.withValues(alpha: 0.5),
+            border: Border(
+              left: BorderSide(
+                color: EditorColors.warning,
+                width: 3,
+              ),
+            ),
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Row(
+            children: [
+              // Expand/Collapse icon
+              Icon(
+                widget.isExpanded ? Icons.expand_more : Icons.chevron_right,
+                size: 16,
+                color: EditorColors.iconDefault,
+              ),
+              const SizedBox(width: 2),
+              // Folder icon
+              Icon(
+                widget.isExpanded ? Icons.folder_open : Icons.folder,
+                size: 14,
+                color: EditorColors.warning,
+              ),
+              const SizedBox(width: 6),
+              // Group name
+              Expanded(
+                child: Text(
+                  widget.name,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                    color: EditorColors.iconDefault,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              // Source count badge
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                decoration: BoxDecoration(
+                  color: EditorColors.warning.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(3),
+                ),
+                child: Text(
+                  '${widget.sourceCount}',
+                  style: TextStyle(
+                    fontSize: 9,
+                    fontWeight: FontWeight.w500,
+                    color: EditorColors.warning,
+                  ),
+                ),
+              ),
+              // Sprite count (if any)
+              if (widget.spriteCount > 0) ...[
+                const SizedBox(width: 4),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: EditorColors.primary.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(3),
+                  ),
+                  child: Text(
+                    '${widget.spriteCount}',
+                    style: TextStyle(
+                      fontSize: 9,
+                      fontWeight: FontWeight.w500,
+                      color: EditorColors.primary,
+                    ),
+                  ),
+                ),
+              ],
+              // Ungroup button (on hover)
+              if (_isHovered) ...[
+                const SizedBox(width: 4),
+                _UngroupButton(onTap: widget.onUngroup),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Ungroup button
+class _UngroupButton extends StatefulWidget {
+  final VoidCallback onTap;
+
+  const _UngroupButton({required this.onTap});
+
+  @override
+  State<_UngroupButton> createState() => _UngroupButtonState();
+}
+
+class _UngroupButtonState extends State<_UngroupButton> {
+  bool _isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: Tooltip(
+          message: 'Ungroup',
+          child: Container(
+            width: 16,
+            height: 16,
+            decoration: BoxDecoration(
+              color: _isHovered
+                  ? EditorColors.error.withValues(alpha: 0.8)
+                  : EditorColors.surface.withValues(alpha: 0.8),
+              borderRadius: BorderRadius.circular(2),
+            ),
+            child: Icon(
+              Icons.link_off,
+              size: 10,
+              color: _isHovered ? Colors.white : EditorColors.iconDisabled,
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -144,6 +416,8 @@ class _SourceItem extends StatefulWidget {
   final bool isActive;
   final bool isSelected;
   final int spriteCount;
+  final bool hasProcessed;
+  final bool isGroupChild;
   final VoidCallback onTap;
   final VoidCallback onClose;
 
@@ -153,6 +427,8 @@ class _SourceItem extends StatefulWidget {
     required this.isActive,
     required this.isSelected,
     required this.spriteCount,
+    this.hasProcessed = false,
+    this.isGroupChild = false,
     required this.onTap,
     required this.onClose,
   });
@@ -192,7 +468,7 @@ class _SourceItemState extends State<_SourceItem> {
       child: GestureDetector(
         onTap: widget.onTap,
         child: Container(
-          height: 44,
+          height: widget.isGroupChild ? 38 : 44,
           margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
           decoration: BoxDecoration(
@@ -209,8 +485,8 @@ class _SourceItemState extends State<_SourceItem> {
             children: [
               // Thumbnail image
               Container(
-                width: 32,
-                height: 32,
+                width: widget.isGroupChild ? 26 : 32,
+                height: widget.isGroupChild ? 26 : 32,
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(2),
                   border: Border.all(
@@ -235,31 +511,49 @@ class _SourceItemState extends State<_SourceItem> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     // File name
-                    Text(
-                      widget.fileName,
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: widget.isActive ? FontWeight.w500 : FontWeight.normal,
-                        color: widget.isActive
-                            ? EditorColors.iconDefault
-                            : EditorColors.iconDisabled,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                      maxLines: 1,
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            widget.fileName,
+                            style: TextStyle(
+                              fontSize: widget.isGroupChild ? 10 : 11,
+                              fontWeight: widget.isActive ? FontWeight.w500 : FontWeight.normal,
+                              color: widget.isActive
+                                  ? EditorColors.iconDefault
+                                  : EditorColors.iconDisabled,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
+                          ),
+                        ),
+                        // Processed indicator
+                        if (widget.hasProcessed)
+                          Padding(
+                            padding: const EdgeInsets.only(left: 4),
+                            child: Icon(
+                              Icons.auto_fix_high,
+                              size: 10,
+                              color: EditorColors.secondary,
+                            ),
+                          ),
+                      ],
                     ),
-                    const SizedBox(height: 2),
-                    // Sprite count
-                    Text(
-                      widget.spriteCount > 0
-                          ? '${widget.spriteCount} sprites'
-                          : '0',
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: widget.spriteCount > 0
-                            ? EditorColors.primary
-                            : EditorColors.iconDisabled,
+                    if (!widget.isGroupChild) ...[
+                      const SizedBox(height: 2),
+                      // Sprite count
+                      Text(
+                        widget.spriteCount > 0
+                            ? '${widget.spriteCount} sprites'
+                            : '0',
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: widget.spriteCount > 0
+                              ? EditorColors.primary
+                              : EditorColors.iconDisabled,
+                        ),
                       ),
-                    ),
+                    ],
                   ],
                 ),
               ),
