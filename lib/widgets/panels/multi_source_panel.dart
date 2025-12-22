@@ -190,6 +190,11 @@ class MultiSourcePanel extends ConsumerWidget {
       onTap: () {
         ref.read(multiImageProvider.notifier).setActiveSource(source.id);
       },
+      onDoubleTap: () {
+        // Double-tap: clear multi-selection and focus on this image only
+        ref.read(multiImageProvider.notifier).clearSelection();
+        ref.read(multiImageProvider.notifier).setActiveSource(source.id);
+      },
       child: Container(
         decoration: BoxDecoration(
           color: EditorColors.panelBackground,
