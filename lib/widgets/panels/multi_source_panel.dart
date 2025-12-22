@@ -332,7 +332,7 @@ class MultiSourcePanel extends ConsumerWidget {
                   ),
             ),
             const SizedBox(height: 16),
-            OutlinedButton.icon(
+            TextButton.icon(
               onPressed: () => _openImages(ref),
               icon: const Icon(Icons.folder_open, size: 18),
               label: const Text('Open Images'),

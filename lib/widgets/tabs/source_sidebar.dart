@@ -69,12 +69,7 @@ class SourceSidebar extends ConsumerWidget {
 
     return Container(
       width: 238,
-      decoration: BoxDecoration(
-        color: EditorColors.surface,
-        border: Border(
-          right: BorderSide(color: EditorColors.divider, width: 1),
-        ),
-      ),
+      color: EditorColors.surface,
       child: Column(
         children: [
           // Header

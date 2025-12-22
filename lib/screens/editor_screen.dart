@@ -136,7 +136,7 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
             autofocus: true,
             child: DropZoneWrapper(
               child: Scaffold(
-                backgroundColor: EditorColors.panelBackground,
+                backgroundColor: Colors.transparent,
                 body: Column(
                   children: [
                     // Toolbar
@@ -446,10 +446,10 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
   }
 
   Widget _buildMainContent() {
-    // Custom divider theme - painter를 null로 설정하여 완전 비활성화
+    // Custom divider theme - 1px 두께로 선만 표시
     final dividerThemeData = MultiSplitViewThemeData(
-      dividerThickness: 4,
-      dividerPainter: null,  // 핵심: painter 비활성화하여 흰색 배경 제거
+      dividerThickness: 1,
+      dividerPainter: null,
     );
 
     return MultiSplitViewTheme(
@@ -457,22 +457,14 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
       child: MultiSplitView(
         controller: _verticalController,
         axis: Axis.vertical,
+        antiAliasingWorkaround: false,
         dividerBuilder:
             (axis, index, resizable, dragging, highlighted, themeData) {
           final lineColor = dragging || highlighted
               ? EditorColors.primary
               : EditorColors.divider;
-          // 수평 디바이더: Column으로 중앙에 선 배치
-          return Container(
-            color: EditorColors.panelBackground,
-            child: Column(
-              children: [
-                const Spacer(),
-                Container(height: 1, color: lineColor),
-                const Spacer(),
-              ],
-            ),
-          );
+          // 수평 디바이더: 1px 선
+          return Container(color: lineColor);
         },
         children: [
           // Top area: Source + Atlas Preview panels
@@ -481,22 +473,14 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
             child: MultiSplitView(
               controller: _horizontalController,
               axis: Axis.horizontal,
+              antiAliasingWorkaround: false,
               dividerBuilder:
                   (axis, index, resizable, dragging, highlighted, themeData) {
                 final lineColor = dragging || highlighted
                     ? EditorColors.primary
                     : EditorColors.divider;
-                // 수직 디바이더: Row로 중앙에 선 배치
-                return Container(
-                  color: EditorColors.panelBackground,
-                  child: Row(
-                    children: [
-                      const Spacer(),
-                      Container(width: 1, color: lineColor),
-                      const Spacer(),
-                    ],
-                  ),
-                );
+                // 수직 디바이더: 1px 선
+                return Container(color: lineColor);
               },
               children: [
                 // Source Panel (left) - now supports multiple images
@@ -540,10 +524,7 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
     bool showHeader = true,
   }) {
     return Container(
-      decoration: BoxDecoration(
-        color: EditorColors.panelBackground,
-        border: Border.all(color: EditorColors.border, width: 1),
-      ),
+      color: EditorColors.panelBackground,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

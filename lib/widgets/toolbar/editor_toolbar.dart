@@ -128,11 +128,20 @@ class EditorToolbar extends ConsumerWidget {
             padding: const EdgeInsets.symmetric(horizontal: 8),
             child: FilledButton.icon(
               onPressed: () => _exportAtlas(context, ref),
-              icon: const Icon(Icons.file_download_outlined, size: 18),
-              label: const Text('Export'),
+              icon: Transform.translate(
+                offset: const Offset(0, -1),
+                child: const Icon(Icons.file_download_outlined, size: 18),
+              ),
+              label: Transform.translate(
+                offset: const Offset(-3, -1),
+                child: const Text('Export'),
+              ),
               style: FilledButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                minimumSize: const Size(0, 28),
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                minimumSize: const Size(100, 32),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(4),
+                ),
               ),
             ),
           ),
