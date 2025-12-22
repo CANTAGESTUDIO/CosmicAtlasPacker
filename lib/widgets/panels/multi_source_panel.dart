@@ -65,8 +65,9 @@ class MultiSourcePanel extends ConsumerWidget {
     bool showGrid,
     double gridSize,
   ) {
+    // 로딩 중에는 빈 상태 유지 (인디케이터 표시 안함)
     if (multiImageState.isLoading) {
-      return _buildLoadingState(context);
+      return _buildEmptyState(context, ref);
     }
 
     if (multiImageState.error != null) {
@@ -259,7 +260,7 @@ class MultiSourcePanel extends ConsumerWidget {
                                 vertical: 1,
                               ),
                               decoration: BoxDecoration(
-                                color: EditorColors.primary.withValues(alpha: 0.8),
+                                color: EditorColors.spriteOutline.withValues(alpha: 0.9),
                                 borderRadius: BorderRadius.circular(3),
                               ),
                               child: Text(
@@ -336,22 +337,6 @@ class MultiSourcePanel extends ConsumerWidget {
               icon: const Icon(Icons.folder_open, size: 18),
               label: const Text('Open Images'),
             ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildLoadingState(BuildContext context) {
-    return Container(
-      color: EditorColors.canvasBackground,
-      child: const Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            CircularProgressIndicator(),
-            SizedBox(height: 16),
-            Text('Loading images...'),
           ],
         ),
       ),
@@ -544,13 +529,14 @@ class _GridCellOverlayPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    // Use spriteOutline (green) color for consistency
     final strokePaint = Paint()
-      ..color = EditorColors.primary.withValues(alpha: 0.7)
+      ..color = EditorColors.spriteOutline.withValues(alpha: 0.7)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.5;
 
     final fillPaint = Paint()
-      ..color = EditorColors.primary.withValues(alpha: 0.1)
+      ..color = EditorColors.spriteOutline.withValues(alpha: 0.1)
       ..style = PaintingStyle.fill;
 
     // Calculate offset to center image in container

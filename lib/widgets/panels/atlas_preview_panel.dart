@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:vector_math/vector_math_64.dart' as vm;
 
-import '../../providers/multi_image_provider.dart';
 import '../../providers/packing_provider.dart';
 import '../../services/bin_packing_service.dart';
 import '../../theme/editor_colors.dart';
@@ -21,6 +20,9 @@ class _AtlasPreviewPanelState extends ConsumerState<AtlasPreviewPanel> {
   final TransformationController _transformController =
       TransformationController();
   String? _hoveredSpriteId;
+  Size _lastViewportSize = Size.zero;
+  (int, int)? _lastAtlasSize;
+  bool _needsFitToView = false;
 
   @override
   void dispose() {
@@ -54,7 +56,14 @@ class _AtlasPreviewPanelState extends ConsumerState<AtlasPreviewPanel> {
 
     // Show empty state when no packing result
     if (packingResult == null || packingResult.packedSprites.isEmpty) {
+      _lastAtlasSize = null;
       return _buildEmptyState(context);
+    }
+
+    // Check if atlas size changed - need to fit to view
+    if (_lastAtlasSize != atlasSize) {
+      _lastAtlasSize = atlasSize;
+      _needsFitToView = true;
     }
 
     return Container(
@@ -69,6 +78,18 @@ class _AtlasPreviewPanelState extends ConsumerState<AtlasPreviewPanel> {
           Expanded(
             child: LayoutBuilder(
               builder: (context, constraints) {
+                _lastViewportSize = constraints.biggest;
+
+                // Auto fit-to-view when atlas changes
+                if (_needsFitToView) {
+                  _needsFitToView = false;
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (mounted) {
+                      _resetZoom(_lastViewportSize, atlasSize.$1, atlasSize.$2);
+                    }
+                  });
+                }
+
                 return Stack(
                   children: [
                     // Interactive canvas with zoom/pan
@@ -219,15 +240,9 @@ class _AtlasPreviewPanelState extends ConsumerState<AtlasPreviewPanel> {
             style: TextStyle(fontSize: 12, color: EditorColors.iconDefault),
           ),
           const Spacer(),
-          // Efficiency
-          Icon(
-            Icons.pie_chart_outline,
-            size: 16,
-            color: _getEfficiencyColor(efficiency),
-          ),
-          const SizedBox(width: 6),
+          // Efficiency - text label instead of icon
           Text(
-            '${efficiency.toStringAsFixed(1)}%',
+            'Efficiency ${efficiency.toStringAsFixed(1)}%',
             style: TextStyle(
               fontSize: 12,
               color: _getEfficiencyColor(efficiency),

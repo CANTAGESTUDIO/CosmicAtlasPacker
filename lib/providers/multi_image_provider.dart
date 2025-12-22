@@ -593,6 +593,19 @@ class MultiImageNotifier extends StateNotifier<MultiImageState> {
     state = state.copyWith(sources: updatedSources);
   }
 
+  /// Rename a source
+  void renameSource(String sourceId, String newName) {
+    final updatedSources = state.sources.map((source) {
+      if (source.id == sourceId) {
+        return source.copyWith(fileName: newName);
+      }
+      return source;
+    }).toList();
+
+    state = state.copyWith(sources: updatedSources);
+    debugPrint('[MultiImageNotifier] Renamed source $sourceId to $newName');
+  }
+
   // ==================== Group Management ====================
 
   /// Create a group from selected sources (Merge)

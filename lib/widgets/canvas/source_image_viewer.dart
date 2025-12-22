@@ -96,6 +96,19 @@ class SourceImageViewerState extends ConsumerState<SourceImageViewer>
     super.dispose();
   }
 
+  @override
+  void didUpdateWidget(SourceImageViewer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Auto fit-to-view when image changes
+    if (widget.image != oldWidget.image && widget.image != null) {
+      // Schedule fit-to-view after layout
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_lastViewportSize != Size.zero && mounted) {
+          zoomToFit(_lastViewportSize);
+        }
+      });
+    }
+  }
 
   /// Handle middle mouse button panning
   void _handlePointerDown(PointerDownEvent event) {

@@ -136,6 +136,9 @@ class SourceSidebar extends ConsumerWidget {
                       ref.read(multiImageProvider.notifier).removeSource(sourceId);
                       Future.microtask(() => _syncActiveSource(ref, clearSprites: true));
                     },
+                    onSourceRename: (sourceId, newName) {
+                      ref.read(multiImageProvider.notifier).renameSource(sourceId, newName);
+                    },
                     onToggleExpand: () {
                       ref.read(multiImageProvider.notifier).toggleGroupExpansion(group.id);
                     },
@@ -158,6 +161,9 @@ class SourceSidebar extends ConsumerWidget {
                       ref.read(multiImageProvider.notifier).removeSource(source.id);
                       Future.microtask(() => _syncActiveSource(ref, clearSprites: true));
                     },
+                    onRename: (newName) {
+                      ref.read(multiImageProvider.notifier).renameSource(source.id, newName);
+                    },
                   ),
                 ],
               ),
@@ -178,6 +184,7 @@ class _GroupItem extends StatelessWidget {
   final MultiSpriteState multiSpriteState;
   final void Function(String sourceId, bool isActive) onSourceTap;
   final void Function(String sourceId) onSourceClose;
+  final void Function(String sourceId, String newName) onSourceRename;
   final VoidCallback onToggleExpand;
   final VoidCallback onUngroup;
 
@@ -189,6 +196,7 @@ class _GroupItem extends StatelessWidget {
     required this.multiSpriteState,
     required this.onSourceTap,
     required this.onSourceClose,
+    required this.onSourceRename,
     required this.onToggleExpand,
     required this.onUngroup,
   });
@@ -233,6 +241,7 @@ class _GroupItem extends StatelessWidget {
                     isGroupChild: true,
                     onTap: () => onSourceTap(source.id, source.id == activeId),
                     onClose: () => onSourceClose(source.id),
+                    onRename: (newName) => onSourceRename(source.id, newName),
                   ),
               ],
             ),
@@ -334,13 +343,13 @@ class _GroupHeaderState extends State<_GroupHeader> {
                   ),
                 ),
               ),
-              // Sprite count (if any)
+              // Sprite count (if any) - green color like sprite outline
               if (widget.spriteCount > 0) ...[
                 const SizedBox(width: 4),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
                   decoration: BoxDecoration(
-                    color: EditorColors.primary.withValues(alpha: 0.2),
+                    color: EditorColors.spriteOutline.withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(3),
                   ),
                   child: Text(
@@ -348,7 +357,7 @@ class _GroupHeaderState extends State<_GroupHeader> {
                     style: TextStyle(
                       fontSize: 9,
                       fontWeight: FontWeight.w500,
-                      color: EditorColors.primary,
+                      color: EditorColors.spriteOutline,
                     ),
                   ),
                 ),
@@ -410,6 +419,7 @@ class _UngroupButtonState extends State<_UngroupButton> {
 }
 
 /// Individual source item with thumbnail, filename, sprite count, and close button
+/// Supports double-click to rename
 class _SourceItem extends StatefulWidget {
   final dynamic image; // ui.Image
   final String fileName;
@@ -420,6 +430,7 @@ class _SourceItem extends StatefulWidget {
   final bool isGroupChild;
   final VoidCallback onTap;
   final VoidCallback onClose;
+  final void Function(String newName)? onRename;
 
   const _SourceItem({
     required this.image,
@@ -431,6 +442,7 @@ class _SourceItem extends StatefulWidget {
     this.isGroupChild = false,
     required this.onTap,
     required this.onClose,
+    this.onRename,
   });
 
   @override
@@ -439,6 +451,61 @@ class _SourceItem extends StatefulWidget {
 
 class _SourceItemState extends State<_SourceItem> {
   bool _isHovered = false;
+  bool _isEditing = false;
+  late TextEditingController _editController;
+  late FocusNode _editFocusNode;
+
+  @override
+  void initState() {
+    super.initState();
+    _editController = TextEditingController(text: widget.fileName);
+    _editFocusNode = FocusNode();
+    _editFocusNode.addListener(_onFocusChange);
+  }
+
+  @override
+  void dispose() {
+    _editController.dispose();
+    _editFocusNode.removeListener(_onFocusChange);
+    _editFocusNode.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(_SourceItem oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.fileName != widget.fileName && !_isEditing) {
+      _editController.text = widget.fileName;
+    }
+  }
+
+  void _onFocusChange() {
+    if (!_editFocusNode.hasFocus && _isEditing) {
+      _finishEditing();
+    }
+  }
+
+  void _startEditing() {
+    if (widget.onRename == null) return;
+    setState(() {
+      _isEditing = true;
+      _editController.text = widget.fileName;
+      _editController.selection = TextSelection(
+        baseOffset: 0,
+        extentOffset: widget.fileName.length,
+      );
+    });
+    Future.microtask(() => _editFocusNode.requestFocus());
+  }
+
+  void _finishEditing() {
+    if (!_isEditing) return;
+    final newName = _editController.text.trim();
+    setState(() => _isEditing = false);
+    if (newName.isNotEmpty && newName != widget.fileName) {
+      widget.onRename?.call(newName);
+    }
+  }
 
   Color _getBackgroundColor() {
     if (widget.isActive) {
@@ -467,6 +534,7 @@ class _SourceItemState extends State<_SourceItem> {
       onExit: (_) => setState(() => _isHovered = false),
       child: GestureDetector(
         onTap: widget.onTap,
+        onDoubleTap: _startEditing,
         child: Container(
           height: widget.isGroupChild ? 38 : 44,
           margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
@@ -510,25 +578,27 @@ class _SourceItemState extends State<_SourceItem> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    // File name
+                    // File name (editable on double-click)
                     Row(
                       children: [
                         Expanded(
-                          child: Text(
-                            widget.fileName,
-                            style: TextStyle(
-                              fontSize: widget.isGroupChild ? 10 : 11,
-                              fontWeight: widget.isActive ? FontWeight.w500 : FontWeight.normal,
-                              color: widget.isActive
-                                  ? EditorColors.iconDefault
-                                  : EditorColors.iconDisabled,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                            maxLines: 1,
-                          ),
+                          child: _isEditing
+                              ? _buildEditField()
+                              : Text(
+                                  widget.fileName,
+                                  style: TextStyle(
+                                    fontSize: widget.isGroupChild ? 10 : 11,
+                                    fontWeight: widget.isActive ? FontWeight.w500 : FontWeight.normal,
+                                    color: widget.isActive
+                                        ? EditorColors.iconDefault
+                                        : EditorColors.iconDisabled,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                  maxLines: 1,
+                                ),
                         ),
                         // Processed indicator
-                        if (widget.hasProcessed)
+                        if (widget.hasProcessed && !_isEditing)
                           Padding(
                             padding: const EdgeInsets.only(left: 4),
                             child: Icon(
@@ -541,7 +611,7 @@ class _SourceItemState extends State<_SourceItem> {
                     ),
                     if (!widget.isGroupChild) ...[
                       const SizedBox(height: 2),
-                      // Sprite count
+                      // Sprite count (green color like sprite outline)
                       Text(
                         widget.spriteCount > 0
                             ? '${widget.spriteCount} sprites'
@@ -549,7 +619,7 @@ class _SourceItemState extends State<_SourceItem> {
                         style: TextStyle(
                           fontSize: 10,
                           color: widget.spriteCount > 0
-                              ? EditorColors.primary
+                              ? EditorColors.spriteOutline
                               : EditorColors.iconDisabled,
                         ),
                       ),
@@ -559,13 +629,45 @@ class _SourceItemState extends State<_SourceItem> {
               ),
 
               // Close button (visible on hover or when active)
-              if (_isHovered || widget.isActive) ...[
+              if ((_isHovered || widget.isActive) && !_isEditing) ...[
                 const SizedBox(width: 4),
                 _CloseButton(onTap: widget.onClose),
               ],
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildEditField() {
+    return SizedBox(
+      height: widget.isGroupChild ? 14 : 16,
+      child: TextField(
+        controller: _editController,
+        focusNode: _editFocusNode,
+        style: TextStyle(
+          fontSize: widget.isGroupChild ? 10 : 11,
+          fontWeight: FontWeight.w500,
+          color: EditorColors.iconDefault,
+        ),
+        decoration: InputDecoration(
+          isDense: true,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(2),
+            borderSide: BorderSide(color: EditorColors.primary),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(2),
+            borderSide: BorderSide(color: EditorColors.primary, width: 1.5),
+          ),
+          filled: true,
+          fillColor: EditorColors.surface,
+        ),
+        onSubmitted: (_) => _finishEditing(),
+        onEditingComplete: _finishEditing,
+        textInputAction: TextInputAction.done,
       ),
     );
   }
