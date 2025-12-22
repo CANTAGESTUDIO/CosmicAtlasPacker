@@ -146,12 +146,17 @@ class SourceImageViewerState extends ConsumerState<SourceImageViewer>
   void _onTransformChanged() {
     widget.onTransformChanged?.call(_transformationController.value);
 
-    // Note: Don't update zoomLevelProvider here because InteractiveViewer
-    // may clamp the transform internally. Zoom level is updated in _animateToMatrix
-    // and _handleWheelZoom instead.
-
-    // Trigger rebuild for zoom-dependent grid rendering
-    setState(() {});
+    // Update zoom level provider and trigger rebuild for UI sync
+    // Using PostFrameCallback to avoid issues during build phase
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        final scale = _transformationController.value.getMaxScaleOnAxis();
+        final percent = (scale * 100).roundToDouble();
+        ref.read(zoomLevelProvider.notifier).state = percent;
+        // Trigger rebuild for zoom-dependent grid rendering
+        setState(() {});
+      }
+    });
   }
 
   /// Reset zoom and pan to default state
@@ -160,39 +165,42 @@ class SourceImageViewerState extends ConsumerState<SourceImageViewer>
   }
 
   /// Set zoom to specific scale (centered on viewport)
-  void setZoom(double scale) {
+  void setZoom(double targetScale) {
     if (_lastViewportSize == Size.zero) return;
 
-    final clampedScale = scale.clamp(ZoomPresets.min / 100, ZoomPresets.max / 100);
-    final currentMatrix = _transformationController.value.clone();
+    final minScale = ZoomPresets.min / 100;
+    final maxScale = ZoomPresets.max / 100;
+
+    if (targetScale < minScale || targetScale > maxScale) return;
+
+    final currentMatrix = _transformationController.value;
     final currentScale = currentMatrix.getMaxScaleOnAxis();
 
-    if ((currentScale - clampedScale).abs() < 0.001) return;
+    if ((currentScale - targetScale).abs() < 0.01) return;
 
-    // Calculate center of viewport
-    final center = Offset(
-      _lastViewportSize.width / 2,
-      _lastViewportSize.height / 2,
-    );
+    // Get current translation (pan offset)
+    final currentTranslateX = currentMatrix.getTranslation().x;
+    final currentTranslateY = currentMatrix.getTranslation().y;
 
-    // Apply zoom centered on viewport center
-    final scaleChange = clampedScale / currentScale;
+    // Calculate viewport center
+    final centerX = _lastViewportSize.width / 2;
+    final centerY = _lastViewportSize.height / 2;
 
-    final translateToCenter = Matrix4.identity()
-      ..setEntry(0, 3, center.dx)
-      ..setEntry(1, 3, center.dy);
+    // Calculate scale ratio
+    final scaleRatio = targetScale / currentScale;
 
-    final scaleMatrix = Matrix4.identity()
-      ..setEntry(0, 0, scaleChange)
-      ..setEntry(1, 1, scaleChange);
+    // Adjust translation to zoom toward center
+    final newTranslateX = centerX - (centerX - currentTranslateX) * scaleRatio;
+    final newTranslateY = centerY - (centerY - currentTranslateY) * scaleRatio;
 
-    final translateBack = Matrix4.identity()
-      ..setEntry(0, 3, -center.dx)
-      ..setEntry(1, 3, -center.dy);
+    // Create new matrix with absolute scale
+    final newMatrix = Matrix4.identity()
+      ..setEntry(0, 0, targetScale)
+      ..setEntry(1, 1, targetScale)
+      ..setEntry(0, 3, newTranslateX)
+      ..setEntry(1, 3, newTranslateY);
 
-    final newMatrix = translateToCenter * scaleMatrix * translateBack * currentMatrix;
-
-    _animateToMatrix(newMatrix);
+    _transformationController.value = newMatrix;
   }
 
   /// Zoom to fit the image in the viewport (instant, no animation)
@@ -204,7 +212,12 @@ class SourceImageViewerState extends ConsumerState<SourceImageViewer>
 
     final scaleX = viewportSize.width / imageWidth;
     final scaleY = viewportSize.height / imageHeight;
-    final scale = (scaleX < scaleY ? scaleX : scaleY) * 0.9; // 90% to add margin
+    final rawScale = (scaleX < scaleY ? scaleX : scaleY) * 0.9; // 90% to add margin
+
+    // Clamp to valid zoom range
+    final minScale = ZoomPresets.min / 100;
+    final maxScale = ZoomPresets.max / 100;
+    final scale = rawScale.clamp(minScale, maxScale);
 
     final matrix = Matrix4.identity();
     matrix.setEntry(0, 0, scale);
@@ -214,6 +227,13 @@ class SourceImageViewerState extends ConsumerState<SourceImageViewer>
 
     // Apply immediately without animation
     _transformationController.value = matrix;
+
+    // Update UI after frame to avoid build-phase errors
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        ref.read(zoomLevelProvider.notifier).state = (scale * 100).roundToDouble();
+      }
+    });
   }
 
   /// Animate transformation to target matrix (for user-triggered zoom)
@@ -278,8 +298,8 @@ class SourceImageViewerState extends ConsumerState<SourceImageViewer>
                     // InteractiveViewer with image content
                     InteractiveViewer(
                       transformationController: _transformationController,
-                      minScale: ZoomPresets.min / 100, // 0.25 (25%)
-                      maxScale: ZoomPresets.max / 100, // 8.0 (800%)
+                      minScale: 0.1, // Wide range to avoid clamping
+                      maxScale: 10.0, // Wide range to avoid clamping
                       // Allow content smaller than viewport (don't force scale to 1.0)
                       constrained: false,
                       // Disable built-in pinch zoom - use custom wheel handler instead

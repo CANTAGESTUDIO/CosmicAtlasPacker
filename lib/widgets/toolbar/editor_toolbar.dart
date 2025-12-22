@@ -67,18 +67,17 @@ class EditorToolbar extends ConsumerWidget {
           // Divider
           _toolbarDivider(),
 
-          // Zoom controls - UI only, actual zoom handled by SourceImageViewer
+          // Zoom controls
           _ToolButton(
             icon: Icons.remove,
             tooltip: 'Zoom Out',
             onPressed: zoomLevel <= ZoomPresets.min
                 ? null
                 : () {
-                    final current = ref.read(zoomLevelProvider);
-                    final target = ZoomPresets.zoomOut(current);
-                    // Update UI immediately
-                    ref.read(zoomLevelProvider.notifier).state = target;
-                    // Then apply actual zoom
+                    // Use zoomLevelProvider as the source of truth
+                    final currentPercent = ref.read(zoomLevelProvider);
+                    final target = ZoomPresets.zoomOut(currentPercent);
+                    // Apply zoom via callback (SourceImageViewer will update provider)
                     final setZoom = ref.read(setZoomCallbackProvider);
                     setZoom?.call(target);
                   },
@@ -99,11 +98,10 @@ class EditorToolbar extends ConsumerWidget {
             onPressed: zoomLevel >= ZoomPresets.max
                 ? null
                 : () {
-                    final current = ref.read(zoomLevelProvider);
-                    final target = ZoomPresets.zoomIn(current);
-                    // Update UI immediately
-                    ref.read(zoomLevelProvider.notifier).state = target;
-                    // Then apply actual zoom
+                    // Use zoomLevelProvider as the source of truth
+                    final currentPercent = ref.read(zoomLevelProvider);
+                    final target = ZoomPresets.zoomIn(currentPercent);
+                    // Apply zoom via callback (SourceImageViewer will update provider)
                     final setZoom = ref.read(setZoomCallbackProvider);
                     setZoom?.call(target);
                   },

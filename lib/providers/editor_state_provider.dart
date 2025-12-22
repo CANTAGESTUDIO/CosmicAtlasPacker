@@ -20,9 +20,9 @@ final canvasTransformProvider = StateProvider<Matrix4?>((ref) => null);
 
 /// Zoom presets for quick access
 class ZoomPresets {
-  static const List<double> values = [25, 50, 100, 200, 400, 800];
-  static const double min = 25;
-  static const double max = 800;
+  static const List<double> values = [100, 125, 150, 175, 200, 250, 300, 400];
+  static const double min = 100;
+  static const double max = 400;
   static const double step = 25;
   static const double defaultValue = 100;
 
@@ -32,15 +32,23 @@ class ZoomPresets {
   }
 
   /// Get next zoom level (zoom in)
+  /// Returns the next 25% step greater than current
   static double zoomIn(double current) {
-    final snapped = snapToStep(current);
-    return (snapped + step).clamp(min, max);
+    // 현재값보다 큰 첫번째 25% step 찾기
+    for (double value = min; value <= max; value += step) {
+      if (value > current + 0.5) return value; // 0.5 tolerance
+    }
+    return max;
   }
 
   /// Get previous zoom level (zoom out)
+  /// Returns the previous 25% step less than current
   static double zoomOut(double current) {
-    final snapped = snapToStep(current);
-    return (snapped - step).clamp(min, max);
+    // 현재값보다 작은 마지막 25% step 찾기
+    for (double value = max; value >= min; value -= step) {
+      if (value < current - 0.5) return value; // 0.5 tolerance
+    }
+    return min;
   }
 }
 

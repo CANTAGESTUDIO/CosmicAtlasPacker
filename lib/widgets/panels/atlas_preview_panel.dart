@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:vector_math/vector_math_64.dart' as vm;
 
+import '../../providers/editor_state_provider.dart';
 import '../../providers/packing_provider.dart';
 import '../../services/bin_packing_service.dart';
 import '../../theme/editor_colors.dart';
@@ -36,15 +37,26 @@ class _AtlasPreviewPanelState extends ConsumerState<AtlasPreviewPanel> {
 
     final scaleX = viewportSize.width / atlasWidth;
     final scaleY = viewportSize.height / atlasHeight;
-    final scale = (scaleX < scaleY ? scaleX : scaleY) * 0.9;
+    final rawScale = (scaleX < scaleY ? scaleX : scaleY) * 0.9;
+
+    // Clamp to valid zoom range
+    final minScale = ZoomPresets.min / 100;
+    final maxScale = ZoomPresets.max / 100;
+    final scale = rawScale.clamp(minScale, maxScale);
 
     final offsetX = (viewportSize.width - atlasWidth * scale) / 2;
     final offsetY = (viewportSize.height - atlasHeight * scale) / 2;
 
     final matrix = Matrix4.identity();
-    matrix.setTranslationRaw(offsetX, offsetY, 0);
-    matrix.scaleByVector3(vm.Vector3(scale, scale, 1));
+    matrix.setEntry(0, 0, scale);
+    matrix.setEntry(1, 1, scale);
+    matrix.setEntry(0, 3, offsetX);
+    matrix.setEntry(1, 3, offsetY);
+
     _transformController.value = matrix;
+
+    // Sync UI with actual scale
+    ref.read(zoomLevelProvider.notifier).state = (scale * 100).roundToDouble();
   }
 
   @override
@@ -96,9 +108,15 @@ class _AtlasPreviewPanelState extends ConsumerState<AtlasPreviewPanel> {
                     InteractiveViewer(
                       transformationController: _transformController,
                       constrained: false,
-                      minScale: 0.1,
-                      maxScale: 10.0,
+                      minScale: ZoomPresets.min / 100, // 1.0 (100%)
+                      maxScale: ZoomPresets.max / 100, // 4.0 (400%)
                       boundaryMargin: const EdgeInsets.all(double.infinity),
+                      onInteractionUpdate: (details) {
+                        // Update UI when zooming via wheel or gesture
+                        final scale = _transformController.value.getMaxScaleOnAxis();
+                        final percent = (scale * 100).roundToDouble();
+                        ref.read(zoomLevelProvider.notifier).state = percent;
+                      },
                       child: MouseRegion(
                         onHover: (event) {
                           _handleHover(event.localPosition, packingResult);
@@ -261,6 +279,8 @@ class _AtlasPreviewPanelState extends ConsumerState<AtlasPreviewPanel> {
   }
 
   Widget _buildZoomControls(Size viewportSize, int atlasWidth, int atlasHeight) {
+    final zoomLevel = ref.watch(zoomLevelProvider);
+
     return Container(
       decoration: BoxDecoration(
         color: EditorColors.panelBackground.withValues(alpha: 0.9),
@@ -270,19 +290,45 @@ class _AtlasPreviewPanelState extends ConsumerState<AtlasPreviewPanel> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Zoom in
-          IconButton(
-            icon: Icon(Icons.add, size: 18, color: EditorColors.iconDefault),
-            onPressed: () => _zoom(1.2),
-            tooltip: 'Zoom In',
-            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-            padding: EdgeInsets.zero,
-          ),
           // Zoom out
           IconButton(
             icon: Icon(Icons.remove, size: 18, color: EditorColors.iconDefault),
-            onPressed: () => _zoom(0.8),
+            onPressed: zoomLevel <= ZoomPresets.min ? null : () {
+              final actualScale = _transformController.value.getMaxScaleOnAxis();
+              final currentPercent = (actualScale * 100).roundToDouble();
+              final target = ZoomPresets.zoomOut(currentPercent);
+              if (_zoom(target / 100)) {
+                ref.read(zoomLevelProvider.notifier).state = target;
+              }
+            },
             tooltip: 'Zoom Out',
+            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+            padding: EdgeInsets.zero,
+          ),
+          // Zoom level display
+          Container(
+            width: 60,
+            alignment: Alignment.center,
+            child: Text(
+              '${zoomLevel.round()}%',
+              style: TextStyle(
+                fontSize: 12,
+                color: EditorColors.iconDefault,
+              ),
+            ),
+          ),
+          // Zoom in
+          IconButton(
+            icon: Icon(Icons.add, size: 18, color: EditorColors.iconDefault),
+            onPressed: zoomLevel >= ZoomPresets.max ? null : () {
+              final actualScale = _transformController.value.getMaxScaleOnAxis();
+              final currentPercent = (actualScale * 100).roundToDouble();
+              final target = ZoomPresets.zoomIn(currentPercent);
+              if (_zoom(target / 100)) {
+                ref.read(zoomLevelProvider.notifier).state = target;
+              }
+            },
+            tooltip: 'Zoom In',
             constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
             padding: EdgeInsets.zero,
           ),
@@ -299,15 +345,44 @@ class _AtlasPreviewPanelState extends ConsumerState<AtlasPreviewPanel> {
     );
   }
 
-  void _zoom(double factor) {
-    final matrix = _transformController.value.clone();
-    final scale = matrix.getMaxScaleOnAxis() * factor;
+  bool _zoom(double targetScale) {
+    if (_lastViewportSize == Size.zero) return false;
 
-    // Clamp scale
-    if (scale < 0.1 || scale > 10.0) return;
+    final currentMatrix = _transformController.value;
+    final currentScale = currentMatrix.getMaxScaleOnAxis();
 
-    matrix.scaleByVector3(vm.Vector3(factor, factor, 1));
-    _transformController.value = matrix;
+    // Clamp scale using ZoomPresets
+    final minScale = ZoomPresets.min / 100;
+    final maxScale = ZoomPresets.max / 100;
+    if (targetScale < minScale || targetScale > maxScale) return false;
+
+    // Check if target scale is close to current scale
+    if ((currentScale - targetScale).abs() < 0.01) return false;
+
+    // Get current translation (pan offset)
+    final currentTranslateX = currentMatrix.getTranslation().x;
+    final currentTranslateY = currentMatrix.getTranslation().y;
+
+    // Calculate viewport center
+    final centerX = _lastViewportSize.width / 2;
+    final centerY = _lastViewportSize.height / 2;
+
+    // Calculate scale ratio
+    final scaleRatio = targetScale / currentScale;
+
+    // Adjust translation to zoom toward center
+    final newTranslateX = centerX - (centerX - currentTranslateX) * scaleRatio;
+    final newTranslateY = centerY - (centerY - currentTranslateY) * scaleRatio;
+
+    // Create new matrix with absolute scale (not relative)
+    final newMatrix = Matrix4.identity()
+      ..setEntry(0, 0, targetScale)
+      ..setEntry(1, 1, targetScale)
+      ..setEntry(0, 3, newTranslateX)
+      ..setEntry(1, 3, newTranslateY);
+
+    _transformController.value = newMatrix;
+    return true;
   }
 
   void _handleHover(Offset localPosition, PackingResult result) {
