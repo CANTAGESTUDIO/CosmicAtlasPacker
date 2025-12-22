@@ -290,16 +290,103 @@ class _SingleSpritePropertiesState
   }
 }
 
-class _MultiSpriteProperties extends ConsumerWidget {
+class _MultiSpriteProperties extends ConsumerStatefulWidget {
   final List<SpriteRegion> sprites;
 
   const _MultiSpriteProperties({required this.sprites});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    // Check if all sprites have the same pivot
+  ConsumerState<_MultiSpriteProperties> createState() =>
+      _MultiSpritePropertiesState();
+}
+
+class _MultiSpritePropertiesState extends ConsumerState<_MultiSpriteProperties> {
+  late TextEditingController _wController;
+  late TextEditingController _hController;
+
+  @override
+  void initState() {
+    super.initState();
+    _initControllers();
+  }
+
+  void _initControllers() {
+    final sprites = widget.sprites;
+    final allSameWidth = sprites.every((s) => s.width == sprites.first.width);
+    final allSameHeight = sprites.every((s) => s.height == sprites.first.height);
+
+    _wController = TextEditingController(
+      text: allSameWidth ? sprites.first.width.toString() : '',
+    );
+    _hController = TextEditingController(
+      text: allSameHeight ? sprites.first.height.toString() : '',
+    );
+  }
+
+  @override
+  void didUpdateWidget(_MultiSpriteProperties oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Update controllers when sprites change
+    if (oldWidget.sprites != widget.sprites) {
+      final sprites = widget.sprites;
+      final allSameWidth = sprites.every((s) => s.width == sprites.first.width);
+      final allSameHeight = sprites.every((s) => s.height == sprites.first.height);
+
+      _wController.text = allSameWidth ? sprites.first.width.toString() : '';
+      _hController.text = allSameHeight ? sprites.first.height.toString() : '';
+    }
+  }
+
+  @override
+  void dispose() {
+    _wController.dispose();
+    _hController.dispose();
+    super.dispose();
+  }
+
+  void _onSizeChanged() {
+    final newW = int.tryParse(_wController.text);
+    final newH = int.tryParse(_hController.text);
+
+    // At least one value must be provided
+    if (newW == null && newH == null) return;
+    if ((newW != null && newW <= 0) || (newH != null && newH <= 0)) return;
+
+    for (final sprite in widget.sprites) {
+      final oldRect = sprite.sourceRect;
+      final pivot = sprite.pivot;
+
+      // Calculate pivot point in world coordinates
+      final pivotX = oldRect.left + oldRect.width * pivot.x;
+      final pivotY = oldRect.top + oldRect.height * pivot.y;
+
+      // Calculate new dimensions
+      final w = newW ?? sprite.width;
+      final h = newH ?? sprite.height;
+
+      // Calculate new position to keep pivot at same world position
+      final newX = pivotX - w * pivot.x;
+      final newY = pivotY - h * pivot.y;
+
+      ref.read(multiSpriteProvider.notifier).updateSpriteRect(
+        sprite.id,
+        x: newX,
+        y: newY,
+        width: w,
+        height: h,
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final sprites = widget.sprites;
+
+    // Check if all sprites have the same values
     final firstPivot = sprites.first.pivot;
     final allSamePivot = sprites.every((s) => s.pivot == firstPivot);
+    final allSameWidth = sprites.every((s) => s.width == sprites.first.width);
+    final allSameHeight = sprites.every((s) => s.height == sprites.first.height);
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(12),
@@ -316,6 +403,43 @@ class _MultiSpriteProperties extends ConsumerWidget {
               color: EditorColors.iconDefault,
             ),
           ),
+          const SizedBox(height: 16),
+
+          // Size Section (Batch Edit)
+          const _SectionHeader(title: 'Size (Batch Edit)'),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: _EditableNumberField(
+                  label: 'W',
+                  controller: _wController,
+                  onChanged: _onSizeChanged,
+                  hintText: allSameWidth ? null : 'Mixed',
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _EditableNumberField(
+                  label: 'H',
+                  controller: _hController,
+                  onChanged: _onSizeChanged,
+                  hintText: allSameHeight ? null : 'Mixed',
+                ),
+              ),
+            ],
+          ),
+          if (!allSameWidth || !allSameHeight) ...[
+            const SizedBox(height: 4),
+            const Text(
+              'Edit to apply to all selected',
+              style: TextStyle(
+                fontSize: 10,
+                color: EditorColors.warning,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ],
           const SizedBox(height: 16),
 
           // Batch Pivot Edit
@@ -416,11 +540,13 @@ class _EditableNumberField extends StatelessWidget {
   final String label;
   final TextEditingController controller;
   final VoidCallback onChanged;
+  final String? hintText;
 
   const _EditableNumberField({
     required this.label,
     required this.controller,
     required this.onChanged,
+    this.hintText,
   });
 
   @override
@@ -452,6 +578,12 @@ class _EditableNumberField extends StatelessWidget {
                 ),
                 filled: true,
                 fillColor: EditorColors.inputBackground,
+                hintText: hintText,
+                hintStyle: TextStyle(
+                  fontSize: 11,
+                  color: EditorColors.iconDisabled.withValues(alpha: 0.7),
+                  fontStyle: FontStyle.italic,
+                ),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(3),
                   borderSide: BorderSide(color: EditorColors.border),
