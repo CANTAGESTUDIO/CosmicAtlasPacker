@@ -65,7 +65,8 @@ class SourceTabs extends ConsumerWidget {
                       // Only switch if not already active
                       if (!isActive) {
                         ref.read(multiImageProvider.notifier).setActiveSource(source.id);
-                        // Sync to sourceImageProvider and clear sprites when switching sources
+                        // Sync to sourceImageProvider for backward compatibility
+                        // NOTE: Don't clear multiSpriteProvider - it maintains sprites per source
                         Future.microtask(() => _syncActiveSource(ref, clearSprites: true));
                       }
                     },

@@ -6,9 +6,9 @@ import '../../providers/multi_image_provider.dart';
 import '../../theme/editor_colors.dart';
 import '../canvas/slicing_overlay.dart';
 import '../canvas/source_image_viewer.dart';
-import '../tabs/source_tabs.dart';
+import '../tabs/source_sidebar.dart';
 
-/// Multi-source Panel - displays source images with tabs and slicing overlays
+/// Multi-source Panel - displays source images with vertical sidebar and slicing overlays
 class MultiSourcePanel extends ConsumerWidget {
   const MultiSourcePanel({super.key});
 
@@ -18,10 +18,10 @@ class MultiSourcePanel extends ConsumerWidget {
     final showGrid = ref.watch(showGridProvider);
     final gridSize = ref.watch(gridSizeProvider);
 
-    return Column(
+    return Row(
       children: [
-        // Tab bar (only show when there are sources)
-        if (multiImageState.hasImages) const SourceTabs(),
+        // Vertical sidebar for source images (like reference images in design tools)
+        if (multiImageState.hasImages) const SourceSidebar(),
 
         // Content area
         Expanded(

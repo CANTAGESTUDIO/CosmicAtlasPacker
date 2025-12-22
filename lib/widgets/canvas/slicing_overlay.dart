@@ -9,7 +9,8 @@ import '../../models/sprite_data.dart';
 import '../../models/sprite_region.dart';
 import '../../providers/editor_state_provider.dart';
 import '../../providers/history_provider.dart';
-import '../../providers/sprite_provider.dart';
+import '../../providers/multi_image_provider.dart';
+import '../../providers/multi_sprite_provider.dart';
 import '../../theme/editor_colors.dart';
 
 /// Overlay for manual slicing - handles drag selection and sprite visualization
@@ -55,7 +56,8 @@ class _SlicingOverlayState extends ConsumerState<SlicingOverlay> {
   @override
   Widget build(BuildContext context) {
     final toolMode = ref.watch(toolModeProvider);
-    final spriteState = ref.watch(spriteProvider);
+    final sprites = ref.watch(activeSourceSpritesProvider);
+    final multiSpriteState = ref.watch(multiSpriteProvider);
     final isSpacePressed = ref.watch(isSpacePressedProvider);
 
     // When Space is pressed, only show visualization (don't capture gestures)
@@ -65,8 +67,8 @@ class _SlicingOverlayState extends ConsumerState<SlicingOverlay> {
         child: CustomPaint(
           size: widget.imageSize,
           painter: _SlicingPainter(
-            sprites: spriteState.sprites,
-            selectedIds: spriteState.selectedIds,
+            sprites: sprites,
+            selectedIds: multiSpriteState.selectedIds,
             dragRect: _dragRect,
             isDragging: _isDragging,
             isSelectionDrag: _isSelectionDrag,
@@ -89,8 +91,8 @@ class _SlicingOverlayState extends ConsumerState<SlicingOverlay> {
         child: CustomPaint(
           size: widget.imageSize,
           painter: _SlicingPainter(
-            sprites: spriteState.sprites,
-            selectedIds: spriteState.selectedIds,
+            sprites: sprites,
+            selectedIds: multiSpriteState.selectedIds,
             dragRect: _dragRect,
             isDragging: _isDragging,
             isSelectionDrag: _isSelectionDrag,
@@ -122,6 +124,8 @@ class _SlicingOverlayState extends ConsumerState<SlicingOverlay> {
     if (isSpacePressed) return;
 
     final localPos = details.localPosition;
+    final activeSource = ref.read(activeSourceProvider);
+    if (activeSource == null) return;
 
     // Check for pivot handle hit first (only in select mode)
     if (mode == ToolMode.select) {
@@ -136,7 +140,7 @@ class _SlicingOverlayState extends ConsumerState<SlicingOverlay> {
       }
 
       // Check if clicking on an existing sprite (don't start selection drag)
-      final clickedSprite = ref.read(spriteProvider.notifier).hitTest(localPos);
+      final clickedSprite = ref.read(multiSpriteProvider.notifier).hitTest(activeSource.id, localPos);
       if (clickedSprite != null) {
         return; // Let tap handle this
       }
@@ -173,7 +177,7 @@ class _SlicingOverlayState extends ConsumerState<SlicingOverlay> {
     // Handle pivot drag
     if (_isDraggingPivot && _pivotDragSpriteId != null) {
       final localPos = details.localPosition;
-      final sprite = ref.read(spriteProvider.notifier).getSpriteById(_pivotDragSpriteId!);
+      final sprite = ref.read(multiSpriteProvider.notifier).getSpriteById(_pivotDragSpriteId!);
       if (sprite != null) {
         final rect = sprite.sourceRect;
         // Calculate normalized pivot position (0.0 ~ 1.0)
@@ -184,7 +188,7 @@ class _SlicingOverlayState extends ConsumerState<SlicingOverlay> {
         final (snappedX, snappedY, preset) = _snapToPreset(pivotX, pivotY);
 
         final newPivot = PivotPoint(x: snappedX, y: snappedY, preset: preset);
-        ref.read(spriteProvider.notifier).updateSpritePivot(_pivotDragSpriteId!, newPivot);
+        ref.read(multiSpriteProvider.notifier).updateSpritePivot(_pivotDragSpriteId!, newPivot);
       }
       return;
     }
@@ -238,9 +242,11 @@ class _SlicingOverlayState extends ConsumerState<SlicingOverlay> {
   }
 
   void _handlePanEnd(DragEndDetails details, ToolMode mode) {
+    final activeSource = ref.read(activeSourceProvider);
+
     // Handle pivot drag end
     if (_isDraggingPivot && _pivotDragSpriteId != null) {
-      final sprite = ref.read(spriteProvider.notifier).getSpriteById(_pivotDragSpriteId!);
+      final sprite = ref.read(multiSpriteProvider.notifier).getSpriteById(_pivotDragSpriteId!);
       final originalPivot = _originalPivot;
 
       // Create undo command if pivot actually changed
@@ -250,7 +256,7 @@ class _SlicingOverlayState extends ConsumerState<SlicingOverlay> {
           oldPivot: originalPivot,
           newPivot: sprite.pivot,
           onUpdate: (id, pivot) {
-            ref.read(spriteProvider.notifier).updateSpritePivotInternal(id, pivot);
+            ref.read(multiSpriteProvider.notifier).updateSpritePivot(id, pivot);
           },
         );
         // Execute with history (but don't re-execute since we already applied during drag)
@@ -278,12 +284,12 @@ class _SlicingOverlayState extends ConsumerState<SlicingOverlay> {
 
       if (intersectingSprites.isNotEmpty) {
         // Select all intersecting sprites
-        ref.read(spriteProvider.notifier).selectMultiple(
-          intersectingSprites.map((s) => s.id).toSet(),
-        );
+        for (final sprite in intersectingSprites) {
+          ref.read(multiSpriteProvider.notifier).selectSprite(sprite.id, addToSelection: true);
+        }
       } else {
         // No sprites in selection area - clear selection
-        ref.read(spriteProvider.notifier).clearSelection();
+        ref.read(multiSpriteProvider.notifier).clearSelection();
       }
 
       // Clear selection drag state (no UI shown after release)
@@ -296,23 +302,13 @@ class _SlicingOverlayState extends ConsumerState<SlicingOverlay> {
       return;
     }
 
-    if (mode != ToolMode.rectSlice || _dragRect == null) return;
+    if (mode != ToolMode.rectSlice || _dragRect == null || activeSource == null) return;
 
     // Validate minimum size (at least 4x4 pixels for usability)
     final rect = _normalizeRect(_dragRect!);
     if (rect.width >= 4 && rect.height >= 4) {
-      // Generate ID and create sprite
-      final id = ref.read(spriteProvider.notifier).generateNewId();
-      final sprite = SpriteRegion(id: id, sourceRect: rect);
-
-      // Create command for undo/redo
-      final command = AddSpriteCommand(
-        sprite: sprite,
-        onAdd: (s) => ref.read(spriteProvider.notifier).addSpriteInternal(s),
-        onRemove: (id) => ref.read(spriteProvider.notifier).removeSpriteInternal(id),
-      );
-
-      ref.read(historyProvider.notifier).execute(command);
+      // Add sprite to active source
+      ref.read(multiSpriteProvider.notifier).addSprite(activeSource.id, rect);
     }
 
     setState(() {
@@ -325,7 +321,7 @@ class _SlicingOverlayState extends ConsumerState<SlicingOverlay> {
 
   /// Find all sprites that intersect with the given rect
   List<SpriteRegion> _findSpritesInRect(Rect selectionRect) {
-    final sprites = ref.read(spriteProvider).sprites;
+    final sprites = ref.read(activeSourceSpritesProvider);
     return sprites.where((sprite) {
       return sprite.sourceRect.overlaps(selectionRect);
     }).toList();
@@ -335,7 +331,10 @@ class _SlicingOverlayState extends ConsumerState<SlicingOverlay> {
     if (mode != ToolMode.select) return;
 
     final localPos = details.localPosition;
-    final sprite = ref.read(spriteProvider.notifier).hitTest(localPos);
+    final activeSource = ref.read(activeSourceProvider);
+    if (activeSource == null) return;
+
+    final sprite = ref.read(multiSpriteProvider.notifier).hitTest(activeSource.id, localPos);
 
     if (sprite != null) {
       final isMetaPressed = HardwareKeyboard.instance.isMetaPressed;
@@ -344,24 +343,24 @@ class _SlicingOverlayState extends ConsumerState<SlicingOverlay> {
 
       if (isMetaPressed || isControlPressed || isShiftPressed) {
         // Cmd/Ctrl/Shift + Click: toggle selection (add/remove)
-        ref.read(spriteProvider.notifier).selectSprite(sprite.id, toggle: true);
+        ref.read(multiSpriteProvider.notifier).selectSprite(sprite.id, toggle: true);
       } else {
         // Normal click: clear others and select only this one
-        final selectedIds = ref.read(spriteProvider).selectedIds;
+        final selectedIds = ref.read(multiSpriteProvider).selectedIds;
         final isCurrentlySelected = selectedIds.contains(sprite.id);
 
         if (isCurrentlySelected && selectedIds.length == 1) {
           // If it's the only selected item, deselect it
-          ref.read(spriteProvider.notifier).clearSelection();
+          ref.read(multiSpriteProvider.notifier).clearSelection();
         } else {
           // Clear all and select only this sprite
-          ref.read(spriteProvider.notifier).clearSelection();
-          ref.read(spriteProvider.notifier).selectSprite(sprite.id);
+          ref.read(multiSpriteProvider.notifier).clearSelection();
+          ref.read(multiSpriteProvider.notifier).selectSprite(sprite.id);
         }
       }
     } else {
       // Clicked on empty area - clear selection
-      ref.read(spriteProvider.notifier).clearSelection();
+      ref.read(multiSpriteProvider.notifier).clearSelection();
     }
   }
 
@@ -385,10 +384,10 @@ class _SlicingOverlayState extends ConsumerState<SlicingOverlay> {
 
   /// Hit test for pivot handle on selected sprites
   SpriteRegion? _hitTestPivotHandle(Offset point) {
-    final spriteState = ref.read(spriteProvider);
+    final multiSpriteState = ref.read(multiSpriteProvider);
 
     // Only check selected sprites
-    for (final sprite in spriteState.selectedSprites) {
+    for (final sprite in multiSpriteState.selectedSprites) {
       final rect = sprite.sourceRect;
       final pivot = sprite.pivot;
 

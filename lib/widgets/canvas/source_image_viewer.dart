@@ -257,8 +257,9 @@ class SourceImageViewerState extends ConsumerState<SourceImageViewer>
                   maxScale: ZoomPresets.max / 100, // 8.0 (800%)
                   // Allow content smaller than viewport (don't force scale to 1.0)
                   constrained: false,
-                  // Disable built-in scroll to use custom wheel handler
-                  scaleEnabled: true,
+                  // Disable built-in pinch zoom - use custom wheel handler instead
+                  // This allows child gestures (SlicingOverlay) to work properly
+                  scaleEnabled: false,
                   // Enable pan when Space is pressed or middle button is down
                   panEnabled: isPanning,
                   // Allow panning beyond image bounds with margin

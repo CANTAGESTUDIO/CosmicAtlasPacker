@@ -392,6 +392,66 @@ class ExportService {
     return atlasImage;
   }
 
+  /// Generate atlas image from packing result with multiple source images
+  ///
+  /// [sourceImages] - Map of source ID to source image (img.Image)
+  /// [packingResult] - Result of bin packing algorithm
+  /// Returns the composed atlas image
+  img.Image generateMultiSourceAtlasImage({
+    required Map<String, dynamic> sourceImages,
+    required PackingResult packingResult,
+  }) {
+    // Create new RGBA image with atlas dimensions
+    final atlasImage = img.Image(
+      width: packingResult.atlasWidth,
+      height: packingResult.atlasHeight,
+      numChannels: 4,
+    );
+
+    // Fill with transparent background
+    img.fill(atlasImage, color: img.ColorRgba8(0, 0, 0, 0));
+
+    // Copy each sprite to its packed position
+    for (final packed in packingResult.packedSprites) {
+      final sprite = packed.sprite;
+      final sourceRect = sprite.sourceRect;
+      final sourceId = sprite.sourceFileId;
+
+      // Get source image for this sprite
+      final sourceImage = sourceImages[sourceId] as img.Image?;
+      if (sourceImage == null) continue;
+
+      // Extract sprite from source image and copy to atlas
+      for (int y = 0; y < packed.height; y++) {
+        for (int x = 0; x < packed.width; x++) {
+          final srcX = sourceRect.left.round() + x;
+          final srcY = sourceRect.top.round() + y;
+
+          // Bounds check for source
+          if (srcX >= 0 &&
+              srcX < sourceImage.width &&
+              srcY >= 0 &&
+              srcY < sourceImage.height) {
+            final pixel = sourceImage.getPixel(srcX, srcY);
+
+            final dstX = packed.x + x;
+            final dstY = packed.y + y;
+
+            // Bounds check for destination
+            if (dstX >= 0 &&
+                dstX < atlasImage.width &&
+                dstY >= 0 &&
+                dstY < atlasImage.height) {
+              atlasImage.setPixel(dstX, dstY, pixel);
+            }
+          }
+        }
+      }
+    }
+
+    return atlasImage;
+  }
+
   /// Export atlas PNG to specified path
   ///
   /// [atlasImage] - Generated atlas image

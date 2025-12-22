@@ -6,8 +6,8 @@ import '../models/atlas_settings.dart';
 import '../services/bin_packing_service.dart';
 import '../services/export_service.dart';
 import '../services/image_loader_service.dart';
-import 'image_provider.dart';
-import 'sprite_provider.dart';
+import 'multi_image_provider.dart'; // activeSourceProvider
+import 'multi_sprite_provider.dart'; // activeSourceSpritesProvider
 
 /// Provider for atlas packing settings
 final atlasSettingsProvider =
@@ -69,18 +69,19 @@ final binPackingServiceProvider = Provider<BinPackingService>((ref) {
   return BinPackingService();
 });
 
-/// Provider for packing result - automatically updates when sprites change
+/// Provider for packing result - automatically updates when active source sprites change
+/// Uses activeSourceSpritesProvider for multi-tab support (1 tab = 1 atlas)
 final packingResultProvider = Provider<PackingResult?>((ref) {
-  final spriteState = ref.watch(spriteProvider);
+  final sprites = ref.watch(activeSourceSpritesProvider);
   final settings = ref.watch(atlasSettingsProvider);
   final packingService = ref.watch(binPackingServiceProvider);
 
-  if (spriteState.sprites.isEmpty) {
+  if (sprites.isEmpty) {
     return null;
   }
 
   return packingService.pack(
-    spriteState.sprites,
+    sprites,
     maxWidth: settings.maxWidth,
     maxHeight: settings.maxHeight,
     padding: settings.padding,
@@ -133,24 +134,42 @@ final _exportServiceProvider = Provider<ExportService>((ref) {
 });
 
 /// Provider for atlas preview image (ui.Image)
-/// Automatically regenerates when packingResult or sourceImage changes
-/// This renders the exact same result as Export (uses same sourceImageProvider)
+/// Automatically regenerates when active source sprites or source image changes
+/// Uses ONLY the active tab's sprites for atlas generation (1 tab = 1 atlas)
 /// Uses autoDispose to ensure fresh computation when dependencies change
 final atlasPreviewImageProvider = FutureProvider.autoDispose<ui.Image?>((ref) async {
-  final packingResult = ref.watch(packingResultProvider);
-  // Use sourceImageProvider - same source as Export for consistency
-  final sourceImageState = ref.watch(sourceImageProvider);
+  final activeSprites = ref.watch(activeSourceSpritesProvider);
+  final activeSource = ref.watch(activeSourceProvider);
+  final settings = ref.watch(atlasSettingsProvider);
+  final packingService = ref.watch(binPackingServiceProvider);
 
-  if (packingResult == null ||
-      packingResult.packedSprites.isEmpty ||
-      sourceImageState.rawImage == null) {
+  // Only use active tab's sprites (1 tab = 1 atlas)
+  if (activeSprites.isEmpty || activeSource == null) {
     return null;
   }
 
-  // Generate atlas image using ExportService (same as export)
+  // Pack only active source's sprites
+  final packingResult = packingService.pack(
+    activeSprites,
+    maxWidth: settings.maxWidth,
+    maxHeight: settings.maxHeight,
+    padding: settings.padding,
+    powerOfTwo: settings.powerOfTwo,
+  );
+
+  if (packingResult.packedSprites.isEmpty) {
+    return null;
+  }
+
+  // Use only active source's image
+  final sourceImages = <String, dynamic>{
+    activeSource.id: activeSource.rawImage,
+  };
+
+  // Generate atlas image using ExportService
   final exportService = ref.read(_exportServiceProvider);
-  final atlasImage = exportService.generateAtlasImage(
-    sourceImage: sourceImageState.rawImage!,
+  final atlasImage = exportService.generateMultiSourceAtlasImage(
+    sourceImages: sourceImages,
     packingResult: packingResult,
   );
 

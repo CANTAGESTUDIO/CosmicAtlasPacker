@@ -3,7 +3,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:reorderable_grid_view/reorderable_grid_view.dart';
 
+import '../../models/sprite_region.dart';
 import '../../providers/multi_image_provider.dart';
+import '../../providers/multi_sprite_provider.dart';
 import '../../providers/sprite_provider.dart';
 import '../../theme/editor_colors.dart';
 import '../common/sprite_thumbnail.dart';
@@ -27,7 +29,9 @@ class _SpriteListPanelState extends ConsumerState<SpriteListPanel> {
 
   @override
   Widget build(BuildContext context) {
-    final spriteState = ref.watch(spriteProvider);
+    // Use multiSpriteProvider for multi-tab support
+    final multiSpriteState = ref.watch(multiSpriteProvider);
+    final sprites = ref.watch(activeSourceSpritesProvider);
     final activeSource = ref.watch(activeSourceProvider);
     final duplicateIds = ref.watch(duplicateIdsProvider);
     final hasDuplicates = ref.watch(hasDuplicateIdsProvider);
@@ -38,7 +42,7 @@ class _SpriteListPanelState extends ConsumerState<SpriteListPanel> {
     }
 
     // No sprites created
-    if (spriteState.sprites.isEmpty) {
+    if (sprites.isEmpty) {
       return _buildEmptyState('No sprites created yet');
     }
 
@@ -48,10 +52,112 @@ class _SpriteListPanelState extends ConsumerState<SpriteListPanel> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // Header with sprite count
-          _buildHeader(spriteState, hasDuplicates, duplicateIds.length),
+          _buildMultiSpriteHeader(sprites, multiSpriteState.selectedIds, hasDuplicates, duplicateIds.length),
           // Sprite list
           Expanded(
-            child: _buildSpriteList(spriteState, activeSource, duplicateIds),
+            child: _buildMultiSpriteList(sprites, activeSource, multiSpriteState.selectedIds, duplicateIds),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Build header for multiSpriteProvider
+  Widget _buildMultiSpriteHeader(List<SpriteRegion> sprites, Set<String> selectedIds, bool hasDuplicates, int duplicateCount) {
+    final selectedCount = selectedIds.length;
+    final totalCount = sprites.length;
+    final activeSource = ref.read(activeSourceProvider);
+
+    return Container(
+      height: 24,
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      decoration: BoxDecoration(
+        color: EditorColors.surface,
+        border: Border(
+          bottom: BorderSide(color: EditorColors.divider, width: 1),
+        ),
+      ),
+      child: Row(
+        children: [
+          Text(
+            'Sprites ($totalCount)',
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w500,
+              color: EditorColors.iconDefault,
+            ),
+          ),
+          if (selectedCount > 0) ...[
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: EditorColors.selection.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                '$selectedCount selected',
+                style: const TextStyle(
+                  fontSize: 10,
+                  color: EditorColors.selection,
+                ),
+              ),
+            ),
+          ],
+          // Duplicate ID warning
+          if (hasDuplicates) ...[
+            const SizedBox(width: 8),
+            Tooltip(
+              message: '$duplicateCount duplicate ID(s) found - fix before export',
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: EditorColors.error.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.warning_rounded,
+                      size: 10,
+                      color: EditorColors.error,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      '$duplicateCount duplicates',
+                      style: const TextStyle(
+                        fontSize: 10,
+                        color: EditorColors.error,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+          const Spacer(),
+          // Actions - use multiSpriteProvider
+          _buildActionButton(
+            icon: Icons.select_all,
+            tooltip: 'Select All (⌘A)',
+            onPressed: sprites.isNotEmpty && activeSource != null
+                ? () => ref.read(multiSpriteProvider.notifier).selectAllInSource(activeSource.id)
+                : null,
+          ),
+          _buildActionButton(
+            icon: Icons.deselect,
+            tooltip: 'Clear Selection',
+            onPressed: selectedCount > 0
+                ? () => ref.read(multiSpriteProvider.notifier).clearSelection()
+                : null,
+          ),
+          _buildActionButton(
+            icon: Icons.delete_outline,
+            tooltip: 'Delete Selected (⌫)',
+            onPressed: selectedCount > 0
+                ? () => ref.read(multiSpriteProvider.notifier).removeSelected()
+                : null,
           ),
         ],
       ),
@@ -182,6 +288,53 @@ class _SpriteListPanelState extends ConsumerState<SpriteListPanel> {
     );
   }
 
+  /// Build sprite list for multiSpriteProvider
+  Widget _buildMultiSpriteList(
+    List<SpriteRegion> sprites,
+    LoadedSourceImage activeSource,
+    Set<String> selectedIds,
+    Map<String, List<int>> duplicateIds,
+  ) {
+    const itemSize = 72.0;
+    const spacing = 6.0;
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Calculate columns based on available width
+        final availableWidth = constraints.maxWidth - 16; // padding
+        final crossAxisCount = (availableWidth / (itemSize + spacing)).floor().clamp(1, 10);
+
+        // Use GridView instead of ReorderableGridView for now (reorder not yet supported in multiSpriteProvider)
+        return GridView.builder(
+          controller: _scrollController,
+          padding: const EdgeInsets.all(8),
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: crossAxisCount,
+            mainAxisSpacing: spacing,
+            crossAxisSpacing: spacing,
+            childAspectRatio: 1.0,
+          ),
+          itemCount: sprites.length,
+          itemBuilder: (context, index) {
+            final sprite = sprites[index];
+            final isSelected = selectedIds.contains(sprite.id);
+            final hasDuplicateId = duplicateIds.containsKey(sprite.id);
+
+            return SpriteThumbnail(
+              key: ValueKey(sprite.id),
+              sprite: sprite,
+              sourceImage: activeSource.uiImage,
+              isSelected: isSelected,
+              hasDuplicateId: hasDuplicateId,
+              onTap: () => _handleMultiSpriteTap(sprite.id, isSelected, sprites),
+              onDoubleTap: () => _handleMultiSpriteDoubleTap(sprite.id),
+            );
+          },
+        );
+      },
+    );
+  }
+
   Widget _buildSpriteList(
     SpriteState spriteState,
     LoadedSourceImage activeSource,
@@ -252,6 +405,79 @@ class _SpriteListPanelState extends ConsumerState<SpriteListPanel> {
         );
       },
     );
+  }
+
+  /// Handle tap for multiSpriteProvider
+  void _handleMultiSpriteTap(String spriteId, bool isCurrentlySelected, List<SpriteRegion> sprites) {
+    final isMetaPressed = HardwareKeyboard.instance.isMetaPressed;
+    final isControlPressed = HardwareKeyboard.instance.isControlPressed;
+    final isShiftPressed = HardwareKeyboard.instance.isShiftPressed;
+
+    if (isMetaPressed || isControlPressed) {
+      // Toggle selection with Cmd/Ctrl (add/remove from selection)
+      ref.read(multiSpriteProvider.notifier).selectSprite(spriteId, toggle: true);
+    } else if (isShiftPressed) {
+      // Range selection with Shift
+      _handleMultiRangeSelection(spriteId, sprites);
+    } else {
+      // Normal click: clear others and select this one only
+      // If already selected and it's the only selection, deselect it
+      final selectedIds = ref.read(multiSpriteProvider).selectedIds;
+      if (isCurrentlySelected && selectedIds.length == 1) {
+        ref.read(multiSpriteProvider.notifier).clearSelection();
+      } else {
+        // Clear all and select only this sprite
+        ref.read(multiSpriteProvider.notifier).clearSelection();
+        ref.read(multiSpriteProvider.notifier).selectSprite(spriteId);
+      }
+    }
+  }
+
+  /// Handle range selection for multiSpriteProvider
+  void _handleMultiRangeSelection(String targetId, List<SpriteRegion> sprites) {
+    final selectedIds = ref.read(multiSpriteProvider).selectedIds;
+
+    if (selectedIds.isEmpty) {
+      // No previous selection, just select the target
+      ref.read(multiSpriteProvider.notifier).selectSprite(targetId);
+      return;
+    }
+
+    // Find the last selected sprite index
+    int lastSelectedIndex = -1;
+    for (int i = sprites.length - 1; i >= 0; i--) {
+      if (selectedIds.contains(sprites[i].id)) {
+        lastSelectedIndex = i;
+        break;
+      }
+    }
+
+    if (lastSelectedIndex == -1) {
+      ref.read(multiSpriteProvider.notifier).selectSprite(targetId);
+      return;
+    }
+
+    // Find target index
+    final targetIndex = sprites.indexWhere((s) => s.id == targetId);
+    if (targetIndex == -1) return;
+
+    // Select range
+    final startIndex = lastSelectedIndex < targetIndex ? lastSelectedIndex : targetIndex;
+    final endIndex = lastSelectedIndex < targetIndex ? targetIndex : lastSelectedIndex;
+
+    for (int i = startIndex; i <= endIndex; i++) {
+      ref.read(multiSpriteProvider.notifier).selectSprite(
+        sprites[i].id,
+        addToSelection: true,
+      );
+    }
+  }
+
+  /// Handle double tap for multiSpriteProvider
+  void _handleMultiSpriteDoubleTap(String spriteId) {
+    // Double-tap to enter rename mode (will be handled by Properties panel)
+    ref.read(multiSpriteProvider.notifier).selectSprite(spriteId);
+    // TODO: Focus on ID field in Properties panel
   }
 
   void _handleSpriteTap(String spriteId, bool isCurrentlySelected) {

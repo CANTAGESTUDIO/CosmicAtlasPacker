@@ -137,12 +137,14 @@ class CrashReporter {
 
 /// runApp을 감싸는 에러 핸들링 래퍼
 /// 모든 Zone 에러를 캐치하여 크래시 리포터로 전달
-Future<void> runAppWithCrashReporting(Widget app) async {
-  WidgetsFlutterBinding.ensureInitialized();
-  await CrashReporter.instance.initialize();
-
+void runAppWithCrashReporting(Widget app) {
   runZonedGuarded(
-    () => runApp(app),
+    () async {
+      // ensureInitialized와 runApp을 같은 Zone에서 실행
+      WidgetsFlutterBinding.ensureInitialized();
+      await CrashReporter.instance.initialize();
+      runApp(app);
+    },
     (error, stackTrace) {
       CrashReporter.instance.recordError(error, stackTrace: stackTrace);
     },

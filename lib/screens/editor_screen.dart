@@ -14,6 +14,7 @@ import '../providers/export_provider.dart';
 import '../providers/history_provider.dart';
 import '../providers/image_provider.dart';
 import '../providers/multi_image_provider.dart';
+import '../providers/multi_sprite_provider.dart';
 import '../providers/packing_provider.dart';
 import '../providers/project_provider.dart';
 import '../providers/sprite_provider.dart';
@@ -609,6 +610,10 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
 
     if (config == null) return;
 
+    // Get active source for multi-image support
+    final activeSource = ref.read(activeSourceProvider);
+    if (activeSource == null) return;
+
     // Apply grid slicing
     const slicer = GridSlicerService();
     final result = slicer.sliceGrid(
@@ -617,10 +622,11 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
       config: config,
     );
 
-    // Save previous state for undo
-    final previousSprites = ref.read(spriteProvider).sprites.toList();
+    // Use multiSpriteProvider for multi-image support
+    ref.read(multiSpriteProvider.notifier).addFromGridSlice(activeSource.id, result);
 
-    // Create command for undo/redo
+    // Also update legacy spriteProvider for backward compatibility
+    final previousSprites = ref.read(spriteProvider).sprites.toList();
     final command = GridSliceCommand(
       previousSprites: previousSprites,
       newSprites: result.sprites,
@@ -630,7 +636,6 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
         ref.read(spriteProvider.notifier).replaceAllSpritesInternal(sprites);
       },
     );
-
     ref.read(historyProvider.notifier).execute(command);
 
     if (mounted) {
@@ -669,10 +674,15 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
       await _updateSourceImageWithProcessed(dialogResult.processedImage!);
     }
 
-    // Save previous state for undo
-    final previousSprites = ref.read(spriteProvider).sprites.toList();
+    // Get active source for multi-image support
+    final activeSource = ref.read(activeSourceProvider);
+    if (activeSource == null) return;
 
-    // Create command for undo/redo
+    // Use multiSpriteProvider for multi-image support
+    ref.read(multiSpriteProvider.notifier).addFromAutoSlice(activeSource.id, result);
+
+    // Also update legacy spriteProvider for backward compatibility
+    final previousSprites = ref.read(spriteProvider).sprites.toList();
     final command = AutoSliceCommand(
       previousSprites: previousSprites,
       newSprites: result.sprites,
@@ -680,7 +690,6 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
         ref.read(spriteProvider.notifier).replaceAllSpritesInternal(sprites);
       },
     );
-
     ref.read(historyProvider.notifier).execute(command);
 
     if (mounted) {
