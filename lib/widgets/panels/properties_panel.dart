@@ -8,7 +8,7 @@ import '../../commands/editor_command.dart';
 import '../../models/sprite_data.dart';
 import '../../models/sprite_region.dart';
 import '../../providers/history_provider.dart';
-import '../../providers/sprite_provider.dart';
+import '../../providers/multi_sprite_provider.dart';
 import '../../theme/editor_colors.dart';
 import '../pivot/custom_pivot_input.dart';
 
@@ -18,8 +18,8 @@ class PropertiesPanel extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final spriteState = ref.watch(spriteProvider);
-    final selectedSprites = spriteState.selectedSprites;
+    final multiSpriteState = ref.watch(multiSpriteProvider);
+    final selectedSprites = multiSpriteState.selectedSprites;
 
     if (selectedSprites.isEmpty) {
       return const _EmptyState();
@@ -113,7 +113,7 @@ class _SingleSpritePropertiesState
       return;
     }
 
-    final sprites = ref.read(spriteProvider).sprites;
+    final sprites = ref.read(multiSpriteProvider).allSprites;
     final isDuplicate = sprites.any((s) => s.id == newId && s.id != widget.sprite.id);
 
     if (isDuplicate) {
@@ -128,7 +128,7 @@ class _SingleSpritePropertiesState
       oldId: widget.sprite.id,
       newId: newId,
       onUpdate: (oldId, newId) {
-        ref.read(spriteProvider.notifier).updateSpriteIdInternal(oldId, newId);
+        ref.read(multiSpriteProvider.notifier).updateSpriteId(oldId, newId);
       },
     );
 
@@ -142,7 +142,7 @@ class _SingleSpritePropertiesState
       oldPivot: widget.sprite.pivot,
       newPivot: pivot,
       onUpdate: (id, pivot) {
-        ref.read(spriteProvider.notifier).updateSpritePivotInternal(id, pivot);
+        ref.read(multiSpriteProvider.notifier).updateSpritePivot(id, pivot);
       },
     );
 
@@ -164,7 +164,13 @@ class _SingleSpritePropertiesState
         oldRect: widget.sprite.sourceRect,
         newRect: newRect,
         onUpdate: (id, rect) {
-          ref.read(spriteProvider.notifier).updateSpriteRectInternal(id, rect);
+          ref.read(multiSpriteProvider.notifier).updateSpriteRect(
+            id,
+            x: rect.left,
+            y: rect.top,
+            width: rect.width.toInt(),
+            height: rect.height.toInt(),
+          );
         },
       );
 
@@ -330,7 +336,7 @@ class _MultiSpriteProperties extends ConsumerWidget {
                 oldPivots: oldPivots,
                 newPivot: pivot,
                 onUpdate: (id, pivot) {
-                  ref.read(spriteProvider.notifier).updateSpritePivotInternal(id, pivot);
+                  ref.read(multiSpriteProvider.notifier).updateSpritePivot(id, pivot);
                 },
               );
 
