@@ -50,9 +50,9 @@ class _AnimationTimelinePanelState extends ConsumerState<AnimationTimelinePanel>
           // Header with playback controls
           _buildHeader(animation, isPlaying, currentFrame),
 
-          // Frame list - Fixed height (타일 142 + 패딩 16 + 스크롤바 8 = 166)
+          // Frame list - Fixed height (타일 126 + 패딩 16 + 스크롤바 8 = 150)
           SizedBox(
-            height: 166,
+            height: 150,
             child: animation == null
                 ? _buildNoAnimationMessage()
                 : _buildFrameList(animation, currentFrame),
@@ -207,12 +207,13 @@ class _AnimationTimelinePanelState extends ConsumerState<AnimationTimelinePanel>
             buildDefaultDragHandles: false,
             shrinkWrap: true,
             proxyDecorator: (child, index, anim) {
-              // 드래그 중인 아이템의 높이를 고정하여 overflow 방지
+              // 드래그 중인 아이템의 크기를 고정하여 overflow 방지
               return Material(
                 color: Colors.transparent,
                 elevation: 4,
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxHeight: 142),
+                child: SizedBox(
+                  width: 94,
+                  height: 126,
                   child: child,
                 ),
               );
@@ -415,14 +416,14 @@ class _FrameTileState extends ConsumerState<_FrameTile> {
       }
     }
 
-    // 타일 고정 높이: 썸네일(72) + spacing(6) + text(16) + spacing(6) + input(26) + padding(16) = 142
+    // 타일 고정 높이: 썸네일(64) + spacing(4) + text(14) + spacing(4) + input(24) + padding(16) = 126
     return ReorderableDragStartListener(
       index: widget.index,
       child: GestureDetector(
         onTap: widget.onTap,
         child: Container(
-          width: 100,
-          height: 142,
+          width: 94,
+          height: 126,
           margin: const EdgeInsets.only(right: 8),
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
@@ -436,57 +437,65 @@ class _FrameTileState extends ConsumerState<_FrameTile> {
             ),
           ),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.start,
+            mainAxisSize: MainAxisSize.max,
             children: [
               // Frame thumbnail
-              Container(
-                width: 72,
-                height: 72,
-                decoration: BoxDecoration(
-                  color: EditorColors.panelBackground,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                clipBehavior: Clip.antiAlias,
-                child: atlasImageAsync.when(
-                  data: (atlasImage) {
-                    if (atlasImage != null && packedSprite != null) {
-                      return CustomPaint(
-                        size: const Size(72, 72),
-                        painter: _FrameThumbnailPainter(
-                          atlasImage: atlasImage,
-                          packedRect: packedSprite.packedRect,
-                        ),
-                      );
-                    }
-                    return _buildPlaceholder();
-                  },
-                  loading: () => _buildPlaceholder(),
-                  error: (_, __) => _buildPlaceholder(),
+              SizedBox(
+                width: 64,
+                height: 64,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: EditorColors.panelBackground,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: atlasImageAsync.when(
+                      data: (atlasImage) {
+                        if (atlasImage != null && packedSprite != null) {
+                          return CustomPaint(
+                            size: const Size(64, 64),
+                            painter: _FrameThumbnailPainter(
+                              atlasImage: atlasImage,
+                              packedRect: packedSprite.packedRect,
+                            ),
+                          );
+                        }
+                        return _buildPlaceholder();
+                      },
+                      loading: () => _buildPlaceholder(),
+                      error: (_, __) => _buildPlaceholder(),
+                    ),
+                  ),
                 ),
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: 4),
 
               // Frame index
               Text(
                 '#${widget.index}',
                 style: TextStyle(
-                  fontSize: 12,
+                  fontSize: 11,
                   fontWeight: widget.isCurrentFrame ? FontWeight.w600 : FontWeight.normal,
                   color: widget.isCurrentFrame
                       ? EditorColors.primary
                       : EditorColors.iconDisabled,
                 ),
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: 4),
 
               // Duration input
-              ShortcutBlockingNumberField(
-                controller: _durationController,
-                focusNode: _focusNode,
-                width: 72,
-                height: 26,
-                onSubmitted: _onDurationSubmit,
+              SizedBox(
+                width: 64,
+                height: 24,
+                child: ShortcutBlockingNumberField(
+                  controller: _durationController,
+                  focusNode: _focusNode,
+                  width: 64,
+                  height: 24,
+                  onSubmitted: _onDurationSubmit,
+                ),
               ),
             ],
           ),

@@ -238,8 +238,8 @@ class _ExportDialogState extends ConsumerState<ExportDialog> {
   Widget build(BuildContext context) {
     return DraggableDialog(
       header: _buildHeader(),
-      width: 600,
-      height: 500,
+      width: 680,
+      height: 620,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
