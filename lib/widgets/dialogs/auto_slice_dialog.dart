@@ -51,6 +51,23 @@ class AutoSliceDialog extends StatefulWidget {
   State<AutoSliceDialog> createState() => _AutoSliceDialogState();
 }
 
+/// Preset configuration for quick settings
+class _AutoSlicePreset {
+  final String name;
+  final int alphaThreshold;
+  final int minWidth;
+  final int minHeight;
+  final bool use8Direction;
+
+  const _AutoSlicePreset({
+    required this.name,
+    required this.alphaThreshold,
+    required this.minWidth,
+    required this.minHeight,
+    required this.use8Direction,
+  });
+}
+
 class _AutoSliceDialogState extends State<AutoSliceDialog> {
   final _thresholdController = TextEditingController(text: '1');
   final _minWidthController = TextEditingController(text: '4');
@@ -78,6 +95,31 @@ class _AutoSliceDialogState extends State<AutoSliceDialog> {
 
   // Processed image cache (after background removal)
   img.Image? _processedImage;
+
+  // Preset definitions
+  static final List<_AutoSlicePreset> _presets = [
+    const _AutoSlicePreset(
+      name: 'Pixel Art',
+      alphaThreshold: 1,
+      minWidth: 1,
+      minHeight: 1,
+      use8Direction: false,
+    ),
+    const _AutoSlicePreset(
+      name: 'Standard',
+      alphaThreshold: 1,
+      minWidth: 4,
+      minHeight: 4,
+      use8Direction: false,
+    ),
+    const _AutoSlicePreset(
+      name: 'High Detail',
+      alphaThreshold: 128,
+      minWidth: 8,
+      minHeight: 8,
+      use8Direction: true,
+    ),
+  ];
 
   @override
   void initState() {
@@ -181,6 +223,17 @@ class _AutoSliceDialogState extends State<AutoSliceDialog> {
     }
   }
 
+  void _applyPreset(_AutoSlicePreset preset) {
+    setState(() {
+      _thresholdController.text = preset.alphaThreshold.toString();
+      _minWidthController.text = preset.minWidth.toString();
+      _minHeightController.text = preset.minHeight.toString();
+      _use8Direction = preset.use8Direction;
+    });
+    _validate();
+    _updatePreview();
+  }
+
   Future<void> _performSlicing() async {
     if (_validationError != null) return;
 
@@ -237,78 +290,206 @@ class _AutoSliceDialogState extends State<AutoSliceDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Auto Slice Settings'),
+    return Dialog(
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(4),
+      ),
       backgroundColor: EditorColors.surface,
-      content: SizedBox(
+      child: SizedBox(
         width: 420,
         child: Column(
           mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Image info
-            Text(
-              'Image: ${widget.image.width} x ${widget.image.height} px',
-              style: TextStyle(
-                fontSize: 12,
-                color: EditorColors.iconDisabled,
-              ),
-            ),
-            const SizedBox(height: 16),
+            // Header
+            _buildHeader(),
 
-            // Background removal option
-            _buildBackgroundRemovalSection(),
-            const SizedBox(height: 16),
+            // Content
+            Flexible(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Quick presets
+                    _buildPresetsSection(),
+                    const SizedBox(height: 16),
 
-            // Alpha threshold
-            _buildThresholdSection(),
-            const SizedBox(height: 16),
+                    // Background removal option
+                    _buildBackgroundRemovalSection(),
+                    const SizedBox(height: 16),
 
-            // Minimum size
-            _buildMinSizeSection(),
-            const SizedBox(height: 16),
+                    // Alpha threshold
+                    _buildThresholdSection(),
+                    const SizedBox(height: 16),
 
-            // Connectivity
-            _buildConnectivitySection(),
-            const SizedBox(height: 16),
+                    // Minimum size
+                    _buildMinSizeSection(),
+                    const SizedBox(height: 16),
 
-            // ID prefix
-            _buildPrefixSection(),
-            const SizedBox(height: 16),
+                    // Connectivity
+                    _buildConnectivitySection(),
+                    const SizedBox(height: 16),
 
-            // Preview
-            _buildPreviewSection(),
+                    // ID prefix
+                    _buildPrefixSection(),
+                    const SizedBox(height: 16),
 
-            // Progress
-            if (_isProcessing) ...[
-              const SizedBox(height: 16),
-              _buildProgressSection(),
-            ],
+                    // Preview
+                    _buildPreviewSection(),
 
-            // Validation error
-            if (_validationError != null && !_isProcessing) ...[
-              const SizedBox(height: 8),
-              Text(
-                _validationError!,
-                style: TextStyle(
-                  color: EditorColors.error,
-                  fontSize: 12,
+                    // Progress
+                    if (_isProcessing) ...[
+                      const SizedBox(height: 16),
+                      _buildProgressSection(),
+                    ],
+
+                    // Validation error
+                    if (_validationError != null && !_isProcessing) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        _validationError!,
+                        style: const TextStyle(
+                          color: EditorColors.error,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
-            ],
+            ),
+
+            // Actions
+            _buildActions(),
           ],
         ),
       ),
-      actions: [
-        TextButton(
-          onPressed: _isProcessing ? null : () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: _isProcessing || _validationError != null || _previewCount == 0
-              ? null
-              : _performSlicing,
-          child: Text(_previewCount != null ? 'Apply ($_previewCount sprites)' : 'Apply'),
+    );
+  }
+
+  Widget _buildHeader() {
+    return Container(
+      height: 48,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      decoration: const BoxDecoration(
+        color: EditorColors.panelBackground,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(4)),
+      ),
+      child: Row(
+        children: [
+          const Text(
+            'Auto Slice',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: EditorColors.iconDefault,
+            ),
+          ),
+          const Spacer(),
+          Text(
+            '${widget.image.width} × ${widget.image.height}',
+            style: const TextStyle(
+              fontSize: 11,
+              color: EditorColors.iconDisabled,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActions() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          TextButton(
+            onPressed: _isProcessing ? null : () => Navigator.of(context).pop(),
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              minimumSize: const Size(0, 32),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(4),
+              ),
+            ),
+            child: const Text('Cancel'),
+          ),
+          const SizedBox(width: 8),
+          FilledButton(
+            onPressed: _isProcessing || _validationError != null || _previewCount == 0
+                ? null
+                : _performSlicing,
+            style: FilledButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              minimumSize: const Size(0, 32),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(4),
+              ),
+            ),
+            child: _isProcessing
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : Text(_previewCount != null
+                    ? 'Apply ($_previewCount sprites)'
+                    : 'Apply'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPresetsSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const _SectionHeader(title: 'Quick Presets'),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            for (int i = 0; i < _presets.length; i++) ...[
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => _applyPreset(_presets[i]),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
+                    decoration: BoxDecoration(
+                      color: EditorColors.inputBackground,
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(color: EditorColors.border),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Text(
+                          _presets[i].name,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                            height: 1.4,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          '${_presets[i].minWidth}×${_presets[i].minHeight}',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: EditorColors.iconDisabled,
+                            fontFamily: 'monospace',
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              if (i < _presets.length - 1) const SizedBox(width: 8),
+            ]
+          ],
         ),
       ],
     );
@@ -445,18 +626,7 @@ class _AutoSliceDialogState extends State<AutoSliceDialog> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Alpha Threshold',
-          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          'Pixels with alpha >= this value are considered opaque',
-          style: TextStyle(
-            fontSize: 11,
-            color: EditorColors.iconDisabled,
-          ),
-        ),
+        const _SectionHeader(title: 'Alpha Threshold'),
         const SizedBox(height: 8),
         Row(
           children: [
@@ -503,18 +673,7 @@ class _AutoSliceDialogState extends State<AutoSliceDialog> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Minimum Sprite Size',
-          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          'Regions smaller than this will be ignored',
-          style: TextStyle(
-            fontSize: 11,
-            color: EditorColors.iconDisabled,
-          ),
-        ),
+        const _SectionHeader(title: 'Minimum Sprite Size'),
         const SizedBox(height: 8),
         Row(
           children: [
@@ -553,10 +712,7 @@ class _AutoSliceDialogState extends State<AutoSliceDialog> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Pixel Connectivity',
-          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
-        ),
+        const _SectionHeader(title: 'Pixel Connectivity'),
         const SizedBox(height: 8),
         Row(
           children: [
@@ -593,10 +749,7 @@ class _AutoSliceDialogState extends State<AutoSliceDialog> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'ID Prefix',
-          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
-        ),
+        const _SectionHeader(title: 'ID Prefix'),
         const SizedBox(height: 8),
         TextField(
           controller: _prefixController,
@@ -632,16 +785,23 @@ class _AutoSliceDialogState extends State<AutoSliceDialog> {
               children: [
                 const Text(
                   'Detected Regions',
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    height: 1.3,
+                  ),
                 ),
-                const SizedBox(height: 2),
+                const SizedBox(height: 4),
                 Text(
                   _previewCount != null
-                      ? '$_previewCount sprites will be created'
+                      ? _previewCount == 0
+                          ? 'No regions detected'
+                          : '$_previewCount sprites will be created'
                       : 'Calculating...',
                   style: TextStyle(
                     fontSize: 11,
-                    color: EditorColors.iconDisabled,
+                    color: _previewCount == 0 ? EditorColors.warning : EditorColors.iconDisabled,
+                    height: 1.4,
                   ),
                 ),
               ],
@@ -655,9 +815,10 @@ class _AutoSliceDialogState extends State<AutoSliceDialog> {
                 borderRadius: BorderRadius.circular(4),
               ),
               child: Text(
-                'No regions found',
+                '⚠ No regions',
                 style: TextStyle(
-                  fontSize: 11,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w500,
                   color: EditorColors.warning,
                 ),
               ),
@@ -875,5 +1036,27 @@ class _RangeTextInputFormatter extends TextInputFormatter {
     }
 
     return newValue;
+  }
+}
+
+// ============================================================================
+// Section Header Widget
+// ============================================================================
+
+class _SectionHeader extends StatelessWidget {
+  final String title;
+
+  const _SectionHeader({required this.title});
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      title,
+      style: const TextStyle(
+        fontSize: 12,
+        color: EditorColors.iconDefault,
+        fontWeight: FontWeight.w600,
+      ),
+    );
   }
 }

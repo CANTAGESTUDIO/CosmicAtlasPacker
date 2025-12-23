@@ -504,7 +504,7 @@ class AtlasPreviewPainter extends CustomPainter {
     );
 
     // Limit text width to fit within sprite bounds (inside border)
-    final maxTextWidth = rect.width - borderWidth * 2 - 4; // border + padding
+    final maxTextWidth = rect.width - borderWidth * 2 - 2; // border + padding
     if (maxTextWidth <= 0) return;
 
     final paragraphBuilder = ui.ParagraphBuilder(ui.ParagraphStyle(
@@ -519,20 +519,20 @@ class AtlasPreviewPainter extends CustomPainter {
     final paragraph = paragraphBuilder.build()
       ..layout(ui.ParagraphConstraints(width: maxTextWidth));
 
-    // Position label inside sprite, below the top border
-    final labelX = rect.left + borderWidth + 2;
-    final labelY = rect.top + borderWidth + 2;
+    // Position label inside sprite, below the top border (reduced padding)
+    final labelX = rect.left + borderWidth;
+    final labelY = rect.top + borderWidth;
 
     // Check if label fits within sprite height (accounting for border)
-    if (paragraph.height + borderWidth * 2 + 4 > rect.height) return;
+    if (paragraph.height + borderWidth * 2 + 2 > rect.height) return;
 
     // Draw label background for readability (inside sprite bounds)
-    final bgWidth = paragraph.width.clamp(0.0, maxTextWidth) + 4;
+    final bgWidth = paragraph.width.clamp(0.0, maxTextWidth) + 2;
     final bgRect = Rect.fromLTWH(
-      labelX - 1,
-      labelY - 1,
+      labelX - 0.5,
+      labelY - 0.5,
       bgWidth,
-      paragraph.height + 2,
+      paragraph.height + 1,
     );
     canvas.drawRect(
       bgRect,

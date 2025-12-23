@@ -61,9 +61,6 @@ class EditorStatusBar extends ConsumerWidget {
             label: 'Memory: $memoryUsage',
           ),
           const Spacer(),
-          // Zoom level indicator with preset dropdown
-          _ZoomIndicator(),
-          _statusDivider(),
           _StatusItem(
             icon: Icons.build_outlined,
             label: 'Tool: ${_toolName(currentTool)}',

@@ -1,18 +1,6 @@
 {
-  "hooks" : {
-    "Stop" : [
-      {
-        "hooks" : [
-          {
-            "command" : "claude -p \"Use the history-logger skill to log this completed task.\"",
-            "type" : "command"
-          }
-        ]
-      }
-    ]
-  },
-  "permissions" : {
-    "allow" : [
+  "permissions": {
+    "allow": [
       "Bash(swift build)",
       "Bash(swift run)",
       "Bash(xcodebuild*)",
@@ -22,8 +10,6 @@
       "Bash(mkdir *)",
       "Bash(rm *)"
     ],
-    "deny" : [
-
-    ]
+    "deny": []
   }
 }

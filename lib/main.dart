@@ -1,13 +1,48 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:window_manager/window_manager.dart';
 
 import 'core/error_handling/crash_reporter.dart';
 import 'providers/theme_provider.dart';
 import 'screens/editor_screen.dart';
 import 'theme/app_theme.dart';
 
-void main() {
-  runAppWithCrashReporting(
+/// Configure ImageCache limits to prevent memory leaks
+void _configureImageCache() {
+  // Limit the number of images to keep in cache (max 100 images)
+  PaintingBinding.instance.imageCache.maximumSize = 100;
+
+  // Limit total memory for images to 256MB
+  PaintingBinding.instance.imageCache.maximumSizeBytes = 256 * 1024 * 1024;
+}
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Configure ImageCache limits before any image loading
+  _configureImageCache();
+
+  // Initialize window manager first
+  await windowManager.ensureInitialized();
+
+  // Configure window options
+  const windowOptions = WindowOptions(
+    minimumSize: Size(1024, 768),
+    center: true,
+    skipTaskbar: false,
+    titleBarStyle: TitleBarStyle.normal,
+  );
+
+  await windowManager.waitUntilReadyToShow(windowOptions, () async {
+    await windowManager.maximize();
+    await windowManager.show();
+    await windowManager.focus();
+  });
+
+  // Initialize crash reporter (registers FlutterError.onError, PlatformDispatcher.onError)
+  await CrashReporter.instance.initialize();
+
+  runApp(
     const ProviderScope(
       child: CosmicAtlasPackerApp(),
     ),

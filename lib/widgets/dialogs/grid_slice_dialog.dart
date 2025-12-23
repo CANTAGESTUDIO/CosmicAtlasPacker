@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'dart:ui' as ui;
 
 import '../../models/enums/slice_mode.dart';
 import '../../services/grid_slicer_service.dart';
@@ -54,6 +55,13 @@ class _GridSliceDialogState extends State<GridSliceDialog> {
   final _offsetYController = TextEditingController(text: '0');
   final _prefixController = TextEditingController(text: 'sprite');
 
+  // Advanced options
+  int _paddingX = 0;
+  int _paddingY = 0;
+  bool _showGridLines = true;
+  bool _showCellNumbers = false;
+  String _numberFormat = '001'; // 001, 01, 1
+
   String? _validationError;
 
   @override
@@ -95,6 +103,16 @@ class _GridSliceDialogState extends State<GridSliceDialog> {
     });
   }
 
+  String _getFormattedNumber(int number) {
+    if (_numberFormat == '001') {
+      return number.toString().padLeft(3, '0');
+    } else if (_numberFormat == '01') {
+      return number.toString().padLeft(2, '0');
+    } else {
+      return number.toString();
+    }
+  }
+
   ({int columns, int rows, int cellWidth, int cellHeight, int total}) _getPreview() {
     final config = _buildConfig();
     const service = GridSlicerService();
@@ -116,71 +134,140 @@ class _GridSliceDialogState extends State<GridSliceDialog> {
   Widget build(BuildContext context) {
     final preview = _getPreview();
 
-    return AlertDialog(
-      title: const Text('Grid Slice Settings'),
+    return Dialog(
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(4),
+      ),
       backgroundColor: EditorColors.surface,
-      content: SizedBox(
+      child: SizedBox(
         width: 400,
         child: Column(
           mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Image info
-            Text(
-              'Image: ${widget.imageWidth} × ${widget.imageHeight} px',
-              style: TextStyle(
-                fontSize: 12,
-                color: EditorColors.iconDisabled,
-              ),
-            ),
-            const SizedBox(height: 16),
+            // Header
+            _buildHeader(),
 
-            // Mode selection
-            _buildModeSelector(),
-            const SizedBox(height: 16),
+            // Content
+            Flexible(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Mode selection
+                    _buildModeSelector(),
+                    const SizedBox(height: 16),
 
-            // Mode-specific inputs
-            if (_mode == SliceMode.cellSize) _buildCellSizeInputs(),
-            if (_mode == SliceMode.cellCount) _buildCellCountInputs(),
-            const SizedBox(height: 16),
+                    // Mode-specific inputs
+                    if (_mode == SliceMode.cellSize) _buildCellSizeInputs(),
+                    if (_mode == SliceMode.cellCount) _buildCellCountInputs(),
+                    const SizedBox(height: 16),
 
-            // Offset inputs
-            _buildOffsetInputs(),
-            const SizedBox(height: 16),
+                    // Offset inputs
+                    _buildOffsetInputs(),
+                    const SizedBox(height: 16),
 
-            // ID prefix
-            _buildPrefixInput(),
-            const SizedBox(height: 16),
+                    // ID prefix
+                    _buildPrefixInput(),
+                    const SizedBox(height: 16),
 
-            // Preview
-            _buildPreview(preview),
+                    // Advanced options
+                    _buildAdvancedOptions(),
+                    const SizedBox(height: 16),
 
-            // Validation error
-            if (_validationError != null) ...[
-              const SizedBox(height: 8),
-              Text(
-                _validationError!,
-                style: TextStyle(
-                  color: EditorColors.error,
-                  fontSize: 12,
+                    // Preview
+                    _buildPreview(preview),
+
+                    // Validation error
+                    if (_validationError != null) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        _validationError!,
+                        style: const TextStyle(
+                          color: EditorColors.error,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
-            ],
+            ),
+
+            // Actions
+            _buildActions(),
           ],
         ),
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: _validationError == null && preview.total > 0
-              ? () => Navigator.of(context).pop(_buildConfig())
-              : null,
-          child: Text('Apply (${preview.total} sprites)'),
-        ),
-      ],
+    );
+  }
+
+  Widget _buildHeader() {
+    return Container(
+      height: 48,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      decoration: const BoxDecoration(
+        color: EditorColors.panelBackground,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(4)),
+      ),
+      child: Row(
+        children: [
+          const Text(
+            'Grid Slice',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: EditorColors.iconDefault,
+            ),
+          ),
+          const Spacer(),
+          Text(
+            '${widget.imageWidth} × ${widget.imageHeight}',
+            style: const TextStyle(
+              fontSize: 11,
+              color: EditorColors.iconDisabled,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActions() {
+    final preview = _getPreview();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              minimumSize: const Size(0, 32),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(4),
+              ),
+            ),
+            child: const Text('Cancel'),
+          ),
+          const SizedBox(width: 8),
+          FilledButton(
+            onPressed: _validationError == null && preview.total > 0
+                ? () => Navigator.of(context).pop(_buildConfig())
+                : null,
+            style: FilledButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              minimumSize: const Size(0, 32),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(4),
+              ),
+            ),
+            child: Text('Apply (${preview.total} sprites)'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -188,10 +275,7 @@ class _GridSliceDialogState extends State<GridSliceDialog> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Slice Mode',
-          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
-        ),
+        const _SectionHeader(title: 'Slice Mode'),
         const SizedBox(height: 8),
         Row(
           children: [
@@ -276,20 +360,7 @@ class _GridSliceDialogState extends State<GridSliceDialog> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Offset (Optional)',
-          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          _mode == SliceMode.cellSize
-              ? '그리드 시작 위치를 조정합니다. 이미지 왼쪽 상단에서 X, Y 픽셀만큼 이동한 위치부터 슬라이스합니다.'
-              : '그리드 시작 위치를 조정합니다. 이미지 왼쪽 상단에서 X, Y 픽셀만큼 이동한 위치부터 슬라이스합니다.',
-          style: TextStyle(
-            fontSize: 11,
-            color: EditorColors.iconDisabled,
-          ),
-        ),
+        const _SectionHeader(title: 'Offset (Optional)'),
         const SizedBox(height: 8),
         Row(
           children: [
@@ -320,10 +391,7 @@ class _GridSliceDialogState extends State<GridSliceDialog> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'ID Prefix',
-          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
-        ),
+        const _SectionHeader(title: 'ID Prefix'),
         const SizedBox(height: 8),
         TextField(
           controller: _prefixController,
@@ -334,6 +402,218 @@ class _GridSliceDialogState extends State<GridSliceDialog> {
           onChanged: (_) => setState(() {}),
         ),
       ],
+    );
+  }
+
+  Widget _buildAdvancedOptions() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: EditorColors.panelBackground,
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: EditorColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const _SectionHeader(title: 'Advanced Options'),
+          const SizedBox(height: 12),
+
+          // Cell Padding
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Cell Padding',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: EditorColors.iconDisabled,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'X (Horizontal)',
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: EditorColors.iconDisabled,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Slider(
+                          value: _paddingX.toDouble(),
+                          min: 0,
+                          max: 32,
+                          divisions: 32,
+                          label: '${_paddingX}px',
+                          onChanged: (value) {
+                            setState(() => _paddingX = value.toInt());
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Y (Vertical)',
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: EditorColors.iconDisabled,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Slider(
+                          value: _paddingY.toDouble(),
+                          min: 0,
+                          max: 32,
+                          divisions: 32,
+                          label: '${_paddingY}px',
+                          onChanged: (value) {
+                            setState(() => _paddingY = value.toInt());
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 12),
+
+          // Grid visualization options
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Grid Visualization',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: EditorColors.iconDisabled,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Checkbox(
+                          value: _showGridLines,
+                          onChanged: (value) {
+                            setState(() => _showGridLines = value ?? true);
+                          },
+                        ),
+                        const SizedBox(width: 4),
+                        const Text(
+                          'Show Grid Lines',
+                          style: TextStyle(fontSize: 12),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Checkbox(
+                          value: _showCellNumbers,
+                          onChanged: (value) {
+                            setState(() => _showCellNumbers = value ?? false);
+                          },
+                        ),
+                        const SizedBox(width: 4),
+                        const Text(
+                          'Show Cell Numbers',
+                          style: TextStyle(fontSize: 12),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+
+          // Number format (only shown when cell numbers enabled)
+          if (_showCellNumbers) ...[
+            const SizedBox(height: 12),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Number Format',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: EditorColors.iconDisabled,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    for (final format in ['001', '01', '1'])
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () {
+                            setState(() => _numberFormat = format);
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              vertical: 8,
+                              horizontal: 12,
+                            ),
+                            decoration: BoxDecoration(
+                              color: _numberFormat == format
+                                  ? EditorColors.primary.withValues(alpha: 0.2)
+                                  : EditorColors.inputBackground,
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(
+                                color: _numberFormat == format
+                                    ? EditorColors.primary
+                                    : EditorColors.border,
+                              ),
+                            ),
+                            child: Center(
+                              child: Text(
+                                format,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w500,
+                                  color: _numberFormat == format
+                                      ? EditorColors.primary
+                                      : EditorColors.iconDefault,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ].expand((w) => [w, const SizedBox(width: 8)]).toList()
+                    ..removeLast(),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Example: sprite_${_getFormattedNumber(1)}',
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: EditorColors.iconDisabled,
+                    fontFamily: 'monospace',
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
     );
   }
 
@@ -349,10 +629,7 @@ class _GridSliceDialogState extends State<GridSliceDialog> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Preview',
-            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
-          ),
+          const _SectionHeader(title: 'Preview'),
           const SizedBox(height: 8),
           Row(
             children: [
@@ -489,5 +766,159 @@ class _PreviewItem extends StatelessWidget {
         ),
       ],
     );
+  }
+}
+
+// ============================================================================
+// Section Header Widget
+// ============================================================================
+
+class _SectionHeader extends StatelessWidget {
+  final String title;
+
+  const _SectionHeader({required this.title});
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      title,
+      style: const TextStyle(
+        fontSize: 12,
+        color: EditorColors.iconDefault,
+        fontWeight: FontWeight.w600,
+      ),
+    );
+  }
+}
+
+/// Grid preview overlay painter for visualizing grid lines
+class _GridPreviewPainter extends CustomPainter {
+  final int imageWidth;
+  final int imageHeight;
+  final int columns;
+  final int rows;
+  final int cellWidth;
+  final int cellHeight;
+  final int offsetX;
+  final int offsetY;
+  final int paddingX;
+  final int paddingY;
+  final bool showGridLines;
+  final bool showCellNumbers;
+  final String numberFormat;
+  final String idPrefix;
+  final int? hoveredCell;
+
+  _GridPreviewPainter({
+    required this.imageWidth,
+    required this.imageHeight,
+    required this.columns,
+    required this.rows,
+    required this.cellWidth,
+    required this.cellHeight,
+    required this.offsetX,
+    required this.offsetY,
+    required this.paddingX,
+    required this.paddingY,
+    required this.showGridLines,
+    required this.showCellNumbers,
+    required this.numberFormat,
+    required this.idPrefix,
+    this.hoveredCell,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (!showGridLines && !showCellNumbers) return;
+
+    final paint = ui.Paint()
+      ..color = EditorColors.primary.withValues(alpha: 0.6)
+      ..strokeWidth = 1.0;
+
+    final textPaint = TextPainter(
+      textDirection: TextDirection.ltr,
+    );
+
+    // Draw grid lines
+    if (showGridLines) {
+      // Vertical lines
+      for (int col = 0; col <= columns; col++) {
+        final x = offsetX + col * (cellWidth + paddingX * 2);
+        if (x >= 0 && x <= imageWidth) {
+          canvas.drawLine(
+            Offset(x.toDouble(), 0),
+            Offset(x.toDouble(), imageHeight.toDouble()),
+            paint,
+          );
+        }
+      }
+
+      // Horizontal lines
+      for (int row = 0; row <= rows; row++) {
+        final y = offsetY + row * (cellHeight + paddingY * 2);
+        if (y >= 0 && y <= imageHeight) {
+          canvas.drawLine(
+            Offset(0, y.toDouble()),
+            Offset(imageWidth.toDouble(), y.toDouble()),
+            paint,
+          );
+        }
+      }
+    }
+
+    // Draw cell numbers
+    if (showCellNumbers) {
+      int cellNumber = 1;
+      for (int row = 0; row < rows; row++) {
+        for (int col = 0; col < columns; col++) {
+          final cellX = offsetX + col * (cellWidth + paddingX * 2) + paddingX;
+          final cellY = offsetY + row * (cellHeight + paddingY * 2) + paddingY;
+
+          final formattedNumber = _formatNumber(cellNumber);
+          final cellLabel = '$idPrefix\_$formattedNumber';
+
+          textPaint.text = TextSpan(
+            text: cellLabel,
+            style: const TextStyle(
+              color: ui.Color.fromARGB(200, 100, 200, 255),
+              fontSize: 9,
+              fontFamily: 'monospace',
+            ),
+          );
+          textPaint.layout();
+
+          if (cellX + textPaint.width < imageWidth &&
+              cellY + textPaint.height < imageHeight) {
+            textPaint.paint(
+              canvas,
+              Offset(cellX.toDouble() + 2, cellY.toDouble() + 2),
+            );
+          }
+
+          cellNumber++;
+        }
+      }
+    }
+  }
+
+  String _formatNumber(int number) {
+    if (numberFormat == '001') {
+      return number.toString().padLeft(3, '0');
+    } else if (numberFormat == '01') {
+      return number.toString().padLeft(2, '0');
+    } else {
+      return number.toString();
+    }
+  }
+
+  @override
+  bool shouldRepaint(_GridPreviewPainter oldDelegate) {
+    return oldDelegate.columns != columns ||
+        oldDelegate.rows != rows ||
+        oldDelegate.offsetX != offsetX ||
+        oldDelegate.offsetY != offsetY ||
+        oldDelegate.showGridLines != showGridLines ||
+        oldDelegate.showCellNumbers != showCellNumbers ||
+        oldDelegate.hoveredCell != hoveredCell;
   }
 }

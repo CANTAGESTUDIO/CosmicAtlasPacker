@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
@@ -16,10 +17,24 @@ class BackgroundRemoveConfig {
   /// If false, removes all pixels matching the target color
   final bool contiguousOnly;
 
+  /// Feather radius for soft edges (0-255 pixels)
+  /// Higher values create softer transitions
+  final int featherRadius;
+
+  /// Enable antialiasing for edge smoothness
+  final bool antialias;
+
+  /// Alpha threshold for feathering (0-255)
+  /// Pixels with alpha below this value are fully transparent
+  final int alphaThreshold;
+
   const BackgroundRemoveConfig({
     required this.targetColor,
     this.tolerance = 0,
     this.contiguousOnly = true,
+    this.featherRadius = 0,
+    this.antialias = false,
+    this.alphaThreshold = 10,
   });
 }
 
@@ -68,6 +83,8 @@ class BackgroundRemoverService {
         targetB: config.targetColor.blue.toInt(),
         tolerance: config.tolerance,
         contiguousOnly: config.contiguousOnly,
+        featherRadius: config.featherRadius,
+        alphaThreshold: config.alphaThreshold,
       ),
     );
 
@@ -176,6 +193,8 @@ class _IsolateInput {
   final int targetB;
   final int tolerance;
   final bool contiguousOnly;
+  final int featherRadius;
+  final int alphaThreshold;
 
   const _IsolateInput({
     required this.imageBytes,
@@ -186,6 +205,8 @@ class _IsolateInput {
     required this.targetB,
     required this.tolerance,
     required this.contiguousOnly,
+    required this.featherRadius,
+    required this.alphaThreshold,
   });
 }
 
@@ -272,8 +293,109 @@ _IsolateOutput _processInIsolate(_IsolateInput input) {
     }
   }
 
+  // Apply alpha threshold
+  if (input.alphaThreshold > 0) {
+    for (int i = 0; i < width * height; i++) {
+      final pixelIdx = i * 4;
+      if (bytes[pixelIdx + 3] < input.alphaThreshold) {
+        bytes[pixelIdx + 3] = 0;
+        pixelsRemoved++;
+      }
+    }
+  }
+
+  // Apply feathering if requested
+  if (input.featherRadius > 0) {
+    final alphaBytes = List<int>.generate(width * height, (i) => bytes[i * 4 + 3]);
+    final featheredAlpha = _applyFeathering(
+      alphaBytes,
+      width,
+      height,
+      input.featherRadius,
+    );
+
+    for (int i = 0; i < width * height; i++) {
+      bytes[i * 4 + 3] = featheredAlpha[i];
+    }
+  }
+
   return _IsolateOutput(
     imageBytes: bytes,
     pixelsRemoved: pixelsRemoved,
   );
+}
+
+/// Apply feathering to alpha channel using Gaussian blur approximation
+List<int> _applyFeathering(List<int> alphaBytes, int width, int height, int radius) {
+  final result = List<int>.from(alphaBytes);
+  final kernel = _gaussianKernel(radius);
+  final kernelSize = kernel.length;
+  final half = kernelSize ~/ 2;
+
+  // Horizontal pass
+  final horizontal = List<int>.filled(alphaBytes.length, 0);
+  for (int y = 0; y < height; y++) {
+    for (int x = 0; x < width; x++) {
+      double sum = 0;
+      double weightSum = 0;
+
+      for (int k = -half; k <= half; k++) {
+        final nx = x + k;
+        if (nx >= 0 && nx < width) {
+          final idx = y * width + nx;
+          sum += alphaBytes[idx] * kernel[k + half];
+          weightSum += kernel[k + half];
+        }
+      }
+
+      horizontal[y * width + x] = (sum / weightSum).round();
+    }
+  }
+
+  // Vertical pass
+  for (int y = 0; y < height; y++) {
+    for (int x = 0; x < width; x++) {
+      double sum = 0;
+      double weightSum = 0;
+
+      for (int k = -half; k <= half; k++) {
+        final ny = y + k;
+        if (ny >= 0 && ny < height) {
+          final idx = ny * width + x;
+          sum += horizontal[idx] * kernel[k + half];
+          weightSum += kernel[k + half];
+        }
+      }
+
+      result[y * width + x] = (sum / weightSum).round();
+    }
+  }
+
+  return result;
+}
+
+/// Generate 1D Gaussian kernel
+List<double> _gaussianKernel(int radius) {
+  final size = radius * 2 + 1;
+  final sigma = radius / 3.0;
+  final kernel = List<double>.filled(size, 0);
+
+  double sum = 0;
+  for (int i = 0; i < size; i++) {
+    final x = (i - radius).toDouble();
+    kernel[i] = _gaussian(x, sigma);
+    sum += kernel[i];
+  }
+
+  // Normalize
+  for (int i = 0; i < size; i++) {
+    kernel[i] /= sum;
+  }
+
+  return kernel;
+}
+
+/// Gaussian function
+double _gaussian(double x, double sigma) {
+  return (1.0 / (sigma * math.sqrt(2 * math.pi))) * math.exp(-(x * x) / (2 * sigma * sigma));
 }
