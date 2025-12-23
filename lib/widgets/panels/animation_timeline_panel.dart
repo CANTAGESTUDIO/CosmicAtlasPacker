@@ -46,9 +46,9 @@ class _AnimationTimelinePanelState extends ConsumerState<AnimationTimelinePanel>
           // Header with playback controls
           _buildHeader(animation, isPlaying, currentFrame),
 
-          // Frame list - Fixed height (타일 142 + 패딩 8 = 150)
+          // Frame list - Fixed height (타일 142 + 패딩 16 + 스크롤바 8 = 166)
           SizedBox(
-            height: 150,
+            height: 166,
             child: animation == null
                 ? _buildNoAnimationMessage()
                 : _buildFrameList(animation, currentFrame),
@@ -186,46 +186,47 @@ class _AnimationTimelinePanelState extends ConsumerState<AnimationTimelinePanel>
         }
       },
       child: ScrollbarTheme(
-          data: ScrollbarThemeData(
-            thumbColor: WidgetStateProperty.all(EditorColors.inputBackground),
-            trackColor: WidgetStateProperty.all(Colors.transparent),
-            radius: const Radius.circular(4),
-            thickness: WidgetStateProperty.all(6.0),
-          ),
-          child: Scrollbar(
+        data: ScrollbarThemeData(
+          thumbColor: WidgetStateProperty.all(EditorColors.inputBackground),
+          trackColor: WidgetStateProperty.all(Colors.transparent),
+          radius: const Radius.circular(4),
+          thickness: WidgetStateProperty.all(6.0),
+        ),
+        child: Scrollbar(
+          controller: _scrollController,
+          thumbVisibility: true,
+          child: ListView.builder(
             controller: _scrollController,
-            thumbVisibility: true,
-            child: ListView.builder(
-              controller: _scrollController,
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              itemCount: animation.frameCount,
-              itemBuilder: (context, index) {
-                final frame = animation.frames[index];
-                final isCurrentFrame = index == currentFrame;
+            scrollDirection: Axis.horizontal,
+            // 상단 4, 하단 12 (스크롤바 공간 확보)
+            padding: const EdgeInsets.fromLTRB(8, 4, 8, 12),
+            itemCount: animation.frameCount,
+            itemBuilder: (context, index) {
+              final frame = animation.frames[index];
+              final isCurrentFrame = index == currentFrame;
 
-                return SizedBox(
-                  key: ValueKey('frame_${animation.id}_$index'),
-                  child: _FrameTile(
-                    frame: frame,
-                    index: index,
-                    isCurrentFrame: isCurrentFrame,
-                    onTap: () {
-                      ref.read(animationProvider.notifier).setPlaybackFrame(index);
-                    },
-                    onDurationChanged: (duration) {
-                      ref.read(animationProvider.notifier).setFrameDuration(
-                            animation.id,
-                            index,
-                            duration,
-                          );
-                    },
-                  ),
-                );
-              },
-            ),
+              return SizedBox(
+                key: ValueKey('frame_${animation.id}_$index'),
+                child: _FrameTile(
+                  frame: frame,
+                  index: index,
+                  isCurrentFrame: isCurrentFrame,
+                  onTap: () {
+                    ref.read(animationProvider.notifier).setPlaybackFrame(index);
+                  },
+                  onDurationChanged: (duration) {
+                    ref.read(animationProvider.notifier).setFrameDuration(
+                          animation.id,
+                          index,
+                          duration,
+                        );
+                  },
+                ),
+              );
+            },
           ),
         ),
+      ),
     );
   }
 

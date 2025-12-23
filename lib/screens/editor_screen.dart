@@ -610,9 +610,9 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
           ),
         ),
 
-        // Bottom area: Animation Timeline - 고정 높이 (헤더 40 + 리스트 150 = 190)
+        // Bottom area: Animation Timeline - 고정 높이 (헤더 40 + 리스트 166 = 206)
         SizedBox(
-          height: 190,
+          height: 206,
           child: const AnimationTimelinePanel(),
         ),
       ],
