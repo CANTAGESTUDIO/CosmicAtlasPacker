@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/project_settings.dart';
 import '../../providers/project_settings_provider.dart';
 import '../../theme/editor_colors.dart';
+import '../common/draggable_dialog.dart';
 
 /// Dialog for configuring project-wide settings
 class ProjectSettingsDialog extends ConsumerStatefulWidget {
@@ -14,6 +15,7 @@ class ProjectSettingsDialog extends ConsumerStatefulWidget {
   static Future<void> show(BuildContext context) async {
     return showDialog<void>(
       context: context,
+      barrierColor: Colors.transparent,
       builder: (context) => const ProjectSettingsDialog(),
     );
   }
@@ -150,87 +152,124 @@ class _ProjectSettingsDialogState extends ConsumerState<ProjectSettingsDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('프로젝트 설정'),
-      backgroundColor: EditorColors.surface,
-      content: SizedBox(
-        width: 420,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Project settings section
-              _buildSectionCard(
-                title: '프로젝트',
-                icon: Icons.folder_outlined,
+    return DraggableDialog(
+      header: _buildHeader(),
+      width: 420,
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Content
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 20, 24, 10),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildProjectNameField(),
-                ],
-              ),
-              const SizedBox(height: 16),
+                  // Project settings section
+                  _buildSectionCard(
+                    title: '프로젝트',
+                    icon: Icons.folder_outlined,
+                    children: [
+                      _buildProjectNameField(),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
 
-              // Default atlas settings section
-              _buildSectionCard(
-                title: '기본 아틀라스 설정',
-                icon: Icons.grid_view_outlined,
-                children: [
-                  _buildAtlasSizeInputs(),
-                  const SizedBox(height: 12),
-                  _buildPaddingInput(),
-                  const SizedBox(height: 12),
-                  _buildAtlasOptions(),
-                ],
-              ),
-              const SizedBox(height: 16),
+                  // Default atlas settings section
+                  _buildSectionCard(
+                    title: '기본 아틀라스 설정',
+                    icon: Icons.grid_view_outlined,
+                    children: [
+                      _buildAtlasSizeInputs(),
+                      const SizedBox(height: 12),
+                      _buildPaddingInput(),
+                      const SizedBox(height: 12),
+                      _buildAtlasOptions(),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
 
-              // Auto-save section
-              _buildSectionCard(
-                title: '자동 저장',
-                icon: Icons.save_outlined,
-                children: [
-                  _buildAutoSaveToggle(),
-                  if (_autoSaveEnabled) ...[
-                    const SizedBox(height: 12),
-                    _buildAutoSaveInterval(),
+                  // Auto-save section
+                  _buildSectionCard(
+                    title: '자동 저장',
+                    icon: Icons.save_outlined,
+                    children: [
+                      _buildAutoSaveToggle(),
+                      if (_autoSaveEnabled) ...[
+                        const SizedBox(height: 12),
+                        _buildAutoSaveInterval(),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Editor defaults section
+                  _buildSectionCard(
+                    title: '에디터 기본값',
+                    icon: Icons.settings_outlined,
+                    children: [
+                      _buildEditorDefaults(),
+                    ],
+                  ),
+
+                  // Validation error
+                  if (_validationError != null) ...[
+                    const SizedBox(height: 16),
+                    _buildErrorMessage(),
                   ],
                 ],
               ),
-              const SizedBox(height: 16),
+            ),
 
-              // Editor defaults section
-              _buildSectionCard(
-                title: '에디터 기본값',
-                icon: Icons.settings_outlined,
+            // Actions
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 14, 24, 20),
+              child: Row(
                 children: [
-                  _buildEditorDefaults(),
+                  TextButton(
+                    onPressed: _resetToDefaults,
+                    child: const Text('초기화'),
+                  ),
+                  const Spacer(),
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('취소'),
+                  ),
+                  FilledButton(
+                    onPressed: _validationError == null ? _applySettings : null,
+                    child: const Text('저장'),
+                  ),
                 ],
               ),
-
-              // Validation error
-              if (_validationError != null) ...[
-                const SizedBox(height: 16),
-                _buildErrorMessage(),
-              ],
-            ],
-          ),
+            ),
+          ],
         ),
       ),
-      actions: [
-        TextButton(
-          onPressed: _resetToDefaults,
-          child: const Text('초기화'),
-        ),
-        const Spacer(),
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('취소'),
-        ),
-        FilledButton(
-          onPressed: _validationError == null ? _applySettings : null,
-          child: const Text('저장'),
-        ),
-      ],
+    );
+  }
+
+  Widget _buildHeader() {
+    return Container(
+      height: 48,
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      decoration: const BoxDecoration(
+        color: EditorColors.panelBackground,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(4)),
+      ),
+      child: const Row(
+        children: [
+          Text(
+            '프로젝트 설정',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: EditorColors.iconDefault,
+            ),
+          ),
+        ],
+      ),
     );
   }
 

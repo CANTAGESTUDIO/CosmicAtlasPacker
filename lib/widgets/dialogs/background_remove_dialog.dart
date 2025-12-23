@@ -7,6 +7,7 @@ import 'package:image/image.dart' as img;
 
 import '../../services/background_remover_service.dart';
 import '../../theme/editor_colors.dart';
+import '../common/draggable_dialog.dart';
 
 /// Dialog for configuring background removal
 class BackgroundRemoveDialog extends StatefulWidget {
@@ -26,6 +27,7 @@ class BackgroundRemoveDialog extends StatefulWidget {
     return showDialog<img.Image>(
       context: context,
       barrierDismissible: false,
+      barrierColor: Colors.transparent,
       builder: (context) => BackgroundRemoveDialog(image: image),
     );
   }
@@ -130,62 +132,54 @@ class _BackgroundRemoveDialogState extends State<BackgroundRemoveDialog> {
             onInvoke: (_) => Navigator.of(context).pop(),
           ),
         },
-        child: Dialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(4),
-          ),
-          backgroundColor: EditorColors.surface,
-          child: SizedBox(
-            width: 500,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // Header
-                _buildHeader(),
+        child: DraggableDialog(
+          header: _buildHeader(),
+          width: 500,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Content
+              Flexible(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(24, 20, 24, 10),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Color selection with eyedropper button
+                      _buildColorSection(),
+                      const SizedBox(height: 20),
 
-                // Content
-                Flexible(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(24, 20, 24, 10),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Color selection with eyedropper button
-                        _buildColorSection(),
-                        const SizedBox(height: 20),
+                      // Tolerance
+                      _buildToleranceSection(),
+                      const SizedBox(height: 20),
 
-                        // Tolerance
-                        _buildToleranceSection(),
-                        const SizedBox(height: 20),
+                      // Mode selection
+                      _buildModeSection(),
+                      const SizedBox(height: 20),
 
-                        // Mode selection
-                        _buildModeSection(),
-                        const SizedBox(height: 20),
+                      // Edge options
+                      _buildEdgeOptionsSection(),
 
-                        // Edge options
-                        _buildEdgeOptionsSection(),
-
-                        // Error message
-                        if (_errorMessage != null) ...[
-                          const SizedBox(height: 14),
-                          Text(
-                            _errorMessage!,
-                            style: const TextStyle(
-                              color: EditorColors.error,
-                              fontSize: 13,
-                            ),
+                      // Error message
+                      if (_errorMessage != null) ...[
+                        const SizedBox(height: 14),
+                        Text(
+                          _errorMessage!,
+                          style: const TextStyle(
+                            color: EditorColors.error,
+                            fontSize: 13,
                           ),
-                        ],
+                        ),
                       ],
-                    ),
+                    ],
                   ),
                 ),
+              ),
 
-                // Actions
-                _buildActions(),
-              ],
-            ),
+              // Actions
+              _buildActions(),
+            ],
           ),
         ),
       ),

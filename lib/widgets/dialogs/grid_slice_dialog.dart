@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../../models/enums/slice_mode.dart';
 import '../../services/grid_slicer_service.dart';
 import '../../theme/editor_colors.dart';
+import '../common/draggable_dialog.dart';
 
 /// Dialog for configuring grid slicing
 class GridSliceDialog extends StatefulWidget {
@@ -28,6 +29,7 @@ class GridSliceDialog extends StatefulWidget {
     return showDialog<GridSliceConfig>(
       context: context,
       barrierDismissible: false,
+      barrierColor: Colors.transparent,
       builder: (context) => GridSliceDialog(
         imageWidth: imageWidth,
         imageHeight: imageHeight,
@@ -137,73 +139,65 @@ class _GridSliceDialogState extends State<GridSliceDialog> {
             onInvoke: (_) => Navigator.of(context).pop(),
           ),
         },
-        child: Dialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(4),
-          ),
-          backgroundColor: EditorColors.surface,
-          child: SizedBox(
-            width: 500,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // Header
-                _buildHeader(),
+        child: DraggableDialog(
+          header: _buildHeader(),
+          width: 500,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Content
+              Flexible(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(24, 20, 24, 10),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Preview info display
+                      _buildPreviewInfoSection(preview),
+                      const SizedBox(height: 20),
 
-                // Content
-                Flexible(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(24, 20, 24, 10),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Preview info display
-                        _buildPreviewInfoSection(preview),
-                        const SizedBox(height: 20),
+                      // Mode selection
+                      _buildModeSection(),
+                      const SizedBox(height: 20),
 
-                        // Mode selection
-                        _buildModeSection(),
-                        const SizedBox(height: 20),
+                      // Mode-specific inputs
+                      if (_mode == SliceMode.cellSize)
+                        _buildCellSizeSection()
+                      else
+                        _buildCellCountSection(),
+                      const SizedBox(height: 20),
 
-                        // Mode-specific inputs
-                        if (_mode == SliceMode.cellSize)
-                          _buildCellSizeSection()
-                        else
-                          _buildCellCountSection(),
-                        const SizedBox(height: 20),
+                      // Offset
+                      _buildOffsetSection(),
+                      const SizedBox(height: 20),
 
-                        // Offset
-                        _buildOffsetSection(),
-                        const SizedBox(height: 20),
+                      // Advanced options
+                      _buildAdvancedOptionsSection(),
+                      const SizedBox(height: 20),
 
-                        // Advanced options
-                        _buildAdvancedOptionsSection(),
-                        const SizedBox(height: 20),
+                      // ID Prefix
+                      _buildPrefixSection(),
 
-                        // ID Prefix
-                        _buildPrefixSection(),
-
-                        // Validation error
-                        if (_validationError != null) ...[
-                          const SizedBox(height: 14),
-                          Text(
-                            _validationError!,
-                            style: const TextStyle(
-                              color: EditorColors.error,
-                              fontSize: 13,
-                            ),
+                      // Validation error
+                      if (_validationError != null) ...[
+                        const SizedBox(height: 14),
+                        Text(
+                          _validationError!,
+                          style: const TextStyle(
+                            color: EditorColors.error,
+                            fontSize: 13,
                           ),
-                        ],
+                        ),
                       ],
-                    ),
+                    ],
                   ),
                 ),
+              ),
 
-                // Actions
-                _buildActions(preview),
-              ],
-            ),
+              // Actions
+              _buildActions(preview),
+            ],
           ),
         ),
       ),

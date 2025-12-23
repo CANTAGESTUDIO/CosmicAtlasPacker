@@ -7,6 +7,7 @@ import 'package:image/image.dart' as img;
 import '../../services/auto_slicer_service.dart';
 import '../../services/background_remover_service.dart';
 import '../../theme/editor_colors.dart';
+import '../common/draggable_dialog.dart';
 
 /// Result from auto slice dialog including processed image
 class AutoSliceDialogResult {
@@ -43,6 +44,7 @@ class AutoSliceDialog extends StatefulWidget {
     return showDialog<AutoSliceDialogResult>(
       context: context,
       barrierDismissible: false,
+      barrierColor: Colors.transparent,
       builder: (context) => AutoSliceDialog(image: image),
     );
   }
@@ -83,7 +85,7 @@ class _AutoSliceDialogState extends State<AutoSliceDialog> {
   String? _errorMessage;
 
   // Background removal settings
-  bool _removeBackground = false;
+  bool _removeBackground = true;
   int _bgColorIndex = 0;
   int _bgTolerance = 0;
   late List<Color> _cornerColors;
@@ -282,80 +284,72 @@ class _AutoSliceDialogState extends State<AutoSliceDialog> {
             onInvoke: (_) => Navigator.of(context).pop(),
           ),
         },
-        child: Dialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(4),
-          ),
-          backgroundColor: EditorColors.surface,
-          child: SizedBox(
-            width: 500,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // Header
-                _buildHeader(),
+        child: DraggableDialog(
+          header: _buildHeader(),
+          width: 500,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Content
+              Flexible(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(24, 20, 24, 10),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Current settings display
+                      _buildCurrentSettingsSection(),
+                      const SizedBox(height: 20),
 
-                // Content
-                Flexible(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(24, 20, 24, 10),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Current settings display
-                        _buildCurrentSettingsSection(),
+                      // Quick presets
+                      _buildPresetsSection(),
+                      const SizedBox(height: 20),
+
+                      // Alpha threshold
+                      _buildThresholdSection(),
+                      const SizedBox(height: 20),
+
+                      // Minimum size
+                      _buildMinSizeSection(),
+                      const SizedBox(height: 20),
+
+                      // Connectivity mode
+                      _buildConnectivitySection(),
+                      const SizedBox(height: 20),
+
+                      // Background removal
+                      _buildBackgroundRemovalSection(),
+                      const SizedBox(height: 20),
+
+                      // Advanced options
+                      _buildAdvancedOptionsSection(),
+
+                      // Progress
+                      if (_isProcessing) ...[
                         const SizedBox(height: 20),
-
-                        // Quick presets
-                        _buildPresetsSection(),
-                        const SizedBox(height: 20),
-
-                        // Alpha threshold
-                        _buildThresholdSection(),
-                        const SizedBox(height: 20),
-
-                        // Minimum size
-                        _buildMinSizeSection(),
-                        const SizedBox(height: 20),
-
-                        // Connectivity mode
-                        _buildConnectivitySection(),
-                        const SizedBox(height: 20),
-
-                        // Background removal
-                        _buildBackgroundRemovalSection(),
-                        const SizedBox(height: 20),
-
-                        // Advanced options
-                        _buildAdvancedOptionsSection(),
-
-                        // Progress
-                        if (_isProcessing) ...[
-                          const SizedBox(height: 20),
-                          _buildProgressSection(),
-                        ],
-
-                        // Error message
-                        if (_errorMessage != null && !_isProcessing) ...[
-                          const SizedBox(height: 14),
-                          Text(
-                            _errorMessage!,
-                            style: const TextStyle(
-                              color: EditorColors.error,
-                              fontSize: 13,
-                            ),
-                          ),
-                        ],
+                        _buildProgressSection(),
                       ],
-                    ),
+
+                      // Error message
+                      if (_errorMessage != null && !_isProcessing) ...[
+                        const SizedBox(height: 14),
+                        Text(
+                          _errorMessage!,
+                          style: const TextStyle(
+                            color: EditorColors.error,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
+              ),
 
-                // Actions
-                _buildActions(),
-              ],
-            ),
+              // Actions
+              _buildActions(),
+            ],
           ),
         ),
       ),

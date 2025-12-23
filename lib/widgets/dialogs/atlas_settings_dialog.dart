@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/atlas_settings.dart';
 import '../../providers/packing_provider.dart';
 import '../../theme/editor_colors.dart';
+import '../common/draggable_dialog.dart';
 
 /// Dialog for configuring atlas packing settings
 class AtlasSettingsDialog extends ConsumerStatefulWidget {
@@ -14,6 +15,7 @@ class AtlasSettingsDialog extends ConsumerStatefulWidget {
   static Future<void> show(BuildContext context) async {
     return showDialog<void>(
       context: context,
+      barrierColor: Colors.transparent,
       builder: (context) => const AtlasSettingsDialog(),
     );
   }
@@ -116,81 +118,120 @@ class _AtlasSettingsDialogState extends ConsumerState<AtlasSettingsDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Atlas Settings'),
-      backgroundColor: EditorColors.surface,
-      content: SizedBox(
-        width: 380,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Size settings
-            _buildSectionHeader('Atlas Size'),
-            const SizedBox(height: 8),
-            _buildSizeInputs(),
-            const SizedBox(height: 20),
+    return DraggableDialog(
+      header: _buildHeader(),
+      width: 380,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Content
+          Flexible(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(24, 20, 24, 10),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Size settings
+                  _buildSectionHeader('Atlas Size'),
+                  const SizedBox(height: 8),
+                  _buildSizeInputs(),
+                  const SizedBox(height: 20),
 
-            // Spacing settings
-            _buildSectionHeader('Spacing'),
-            const SizedBox(height: 8),
-            _buildSpacingInputs(),
-            const SizedBox(height: 20),
+                  // Spacing settings
+                  _buildSectionHeader('Spacing'),
+                  const SizedBox(height: 8),
+                  _buildSpacingInputs(),
+                  const SizedBox(height: 20),
 
-            // Options
-            _buildSectionHeader('Options'),
-            const SizedBox(height: 8),
-            _buildOptionSwitches(),
+                  // Options
+                  _buildSectionHeader('Options'),
+                  const SizedBox(height: 8),
+                  _buildOptionSwitches(),
 
-            // Validation error
-            if (_validationError != null) ...[
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: EditorColors.error.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(4),
-                  border: Border.all(color: EditorColors.error),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.error_outline,
-                      size: 16,
-                      color: EditorColors.error,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        _validationError!,
-                        style: TextStyle(
-                          color: EditorColors.error,
-                          fontSize: 12,
-                        ),
+                  // Validation error
+                  if (_validationError != null) ...[
+                    const SizedBox(height: 16),
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: EditorColors.error.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(color: EditorColors.error),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.error_outline,
+                            size: 16,
+                            color: EditorColors.error,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              _validationError!,
+                              style: TextStyle(
+                                color: EditorColors.error,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
-                ),
+                ],
               ),
-            ],
-          ],
-        ),
+            ),
+          ),
+
+          // Actions
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 14, 24, 20),
+            child: Row(
+              children: [
+                TextButton(
+                  onPressed: _resetToDefaults,
+                  child: const Text('Reset'),
+                ),
+                const Spacer(),
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: _validationError == null ? _applySettings : null,
+                  child: const Text('Apply'),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
-      actions: [
-        TextButton(
-          onPressed: _resetToDefaults,
-          child: const Text('Reset'),
-        ),
-        const Spacer(),
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: _validationError == null ? _applySettings : null,
-          child: const Text('Apply'),
-        ),
-      ],
+    );
+  }
+
+  Widget _buildHeader() {
+    return Container(
+      height: 48,
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      decoration: const BoxDecoration(
+        color: EditorColors.panelBackground,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(4)),
+      ),
+      child: Row(
+        children: [
+          const Text(
+            'Atlas Settings',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: EditorColors.iconDefault,
+            ),
+          ),
+        ],
+      ),
     );
   }
 

@@ -14,6 +14,7 @@ import '../../providers/packing_provider.dart';
 import '../../providers/sprite_provider.dart';
 import '../../services/bin_packing_service.dart';
 import '../../theme/editor_colors.dart';
+import '../common/draggable_dialog.dart';
 
 /// Export dialog settings state
 class ExportDialogSettings {
@@ -72,6 +73,7 @@ class ExportDialog extends ConsumerStatefulWidget {
     final result = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
+      barrierColor: Colors.transparent,
       builder: (context) => const ExportDialog(),
     );
     return result ?? false;
@@ -232,31 +234,19 @@ class _ExportDialogState extends ConsumerState<ExportDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Row(
+    return DraggableDialog(
+      header: _buildHeader(),
+      width: 600,
+      height: 500,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.file_download, size: 20),
-          const SizedBox(width: 8),
-          const Text('Export Atlas'),
-          const Spacer(),
-          IconButton(
-            icon: const Icon(Icons.close, size: 18),
-            onPressed: () => Navigator.of(context).pop(false),
-            tooltip: 'Close',
-          ),
-        ],
-      ),
-      backgroundColor: EditorColors.surface,
-      content: SizedBox(
-        width: 600,
-        height: 500,
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Left: Settings
-            Expanded(
-              flex: 3,
-              child: SingleChildScrollView(
+          // Left: Settings
+          Expanded(
+            flex: 3,
+            child: SingleChildScrollView(
+              child: Padding(
+                padding: const EdgeInsets.all(20),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -273,32 +263,45 @@ class _ExportDialogState extends ConsumerState<ExportDialog> {
                 ),
               ),
             ),
-            const SizedBox(width: 16),
-            // Right: Preview
-            Expanded(
-              flex: 2,
-              child: _buildPreviewSection(),
-            ),
-          ],
-        ),
+          ),
+          // Right: Preview
+          Expanded(
+            flex: 2,
+            child: _buildPreviewSection(),
+          ),
+        ],
       ),
-      actions: [
-        TextButton(
-          onPressed: _isExporting ? null : () => Navigator.of(context).pop(false),
-          child: const Text('Cancel'),
-        ),
-        FilledButton.icon(
-          onPressed: _isExporting || !_settings.isValid ? null : _performExport,
-          icon: _isExporting
-              ? const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.file_download, size: 18),
-          label: Text(_isExporting ? 'Exporting...' : 'Export'),
-        ),
-      ],
+    );
+  }
+
+  Widget _buildHeader() {
+    return Container(
+      height: 48,
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      decoration: const BoxDecoration(
+        color: EditorColors.panelBackground,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(4)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.file_download, size: 20),
+          const SizedBox(width: 8),
+          const Text(
+            'Export Atlas',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: EditorColors.iconDefault,
+            ),
+          ),
+          const Spacer(),
+          IconButton(
+            icon: const Icon(Icons.close, size: 18),
+            onPressed: () => Navigator.of(context).pop(false),
+            tooltip: 'Close',
+          ),
+        ],
+      ),
     );
   }
 
@@ -574,6 +577,37 @@ class _ExportDialogState extends ConsumerState<ExportDialog> {
               ),
             ),
             child: _buildPreviewInfo(),
+          ),
+          // Actions
+          Padding(
+            padding: const EdgeInsets.all(8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextButton(
+                    onPressed: _isExporting ? null : () => Navigator.of(context).pop(false),
+                    child: const Text('Cancel'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: _isExporting || !_settings.isValid ? null : _performExport,
+                    icon: _isExporting
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.file_download, size: 16),
+                    label: Text(_isExporting ? 'Exporting...' : 'Export'),
+                    style: FilledButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
