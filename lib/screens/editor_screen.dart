@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -973,11 +974,22 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
   }
 
   /// Convert img.Image to ui.Image
+  /// Uses direct pixel data conversion to avoid PNG re-encoding size issues
   Future<ui.Image?> _convertToUiImage(img.Image image) async {
-    final encoded = img.encodePng(image);
-    final codec = await ui.instantiateImageCodec(encoded);
-    final frame = await codec.getNextFrame();
-    return frame.image;
+    final completer = Completer<ui.Image>();
+    final pixels = image.getBytes(order: img.ChannelOrder.rgba);
+
+    ui.decodeImageFromPixels(
+      pixels,
+      image.width,
+      image.height,
+      ui.PixelFormat.rgba8888,
+      (ui.Image result) {
+        completer.complete(result);
+      },
+    );
+
+    return await completer.future;
   }
 
   /// Update source image in both sourceImageProvider and multiImageProvider

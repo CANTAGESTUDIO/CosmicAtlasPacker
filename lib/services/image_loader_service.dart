@@ -177,7 +177,6 @@ class ImageLoaderService {
 
   /// Convert img.Image to ui.Image
   /// Uses PNG encoding/decoding to ensure alpha channel is preserved
-  /// (Same path as Export for consistency)
   Future<ui.Image?> convertToUiImage(img.Image image) async {
     try {
       // Encode to PNG (preserves alpha channel exactly like Export)

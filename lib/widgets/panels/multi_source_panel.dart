@@ -7,6 +7,7 @@ import '../../providers/editor_state_provider.dart';
 import '../../providers/multi_image_provider.dart';
 import '../../providers/multi_sprite_provider.dart';
 import '../../theme/editor_colors.dart';
+import '../canvas/grid_preview_overlay.dart';
 import '../canvas/slicing_overlay.dart';
 import '../canvas/source_image_viewer.dart';
 import '../tabs/source_sidebar.dart';
@@ -109,9 +110,16 @@ class MultiSourcePanel extends ConsumerWidget {
           image: displayImage,
           showGrid: showGrid,
           gridSize: gridSize,
-          overlay: SlicingOverlay(
-            imageSize: imageSize,
-            transform: Matrix4.identity(),
+          overlay: Stack(
+            children: [
+              SlicingOverlay(
+                imageSize: imageSize,
+                transform: Matrix4.identity(),
+              ),
+              GridPreviewOverlay(
+                imageSize: imageSize,
+              ),
+            ],
           ),
         ),
         // Slice mode badge (only show when sliced)

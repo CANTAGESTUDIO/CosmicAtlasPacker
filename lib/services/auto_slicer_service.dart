@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:collection';
 import 'dart:typed_data';
 import 'dart:ui';
@@ -448,6 +449,7 @@ List<bool> _createBinaryMask(
 /// Utility class for sprite image operations
 class SpriteImageUtils {
   /// Create ui.Image from RGBA bytes
+  /// Uses direct pixel data conversion to avoid PNG re-encoding size issues
   ///
   /// [imageBytes] - RGBA pixel data
   /// [width] - Image width in pixels
@@ -466,27 +468,18 @@ class SpriteImageUtils {
       return null;
     }
 
-    final codec = await instantiateImageCodec(
-      await _encodeRgbaToPng(imageBytes, width, height),
+    final completer = Completer<Image>();
+    decodeImageFromPixels(
+      imageBytes,
+      width,
+      height,
+      PixelFormat.rgba8888,
+      (Image result) {
+        completer.complete(result);
+      },
     );
-    final frame = await codec.getNextFrame();
-    return frame.image;
-  }
 
-  /// Encode RGBA bytes to PNG format for ui.Image creation
-  static Future<Uint8List> _encodeRgbaToPng(
-    Uint8List rgbaBytes,
-    int width,
-    int height,
-  ) async {
-    final image = img.Image.fromBytes(
-      width: width,
-      height: height,
-      bytes: rgbaBytes.buffer,
-      order: img.ChannelOrder.rgba,
-      numChannels: 4,
-    );
-    return Uint8List.fromList(img.encodePng(image));
+    return await completer.future;
   }
 
   /// Create ui.Image for all sprites in list

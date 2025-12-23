@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../models/enums/slice_mode.dart';
+import '../../providers/grid_preview_provider.dart';
 import '../../services/grid_slicer_service.dart';
 import '../../theme/editor_colors.dart';
 import '../common/draggable_dialog.dart';
 
 /// Dialog for configuring grid slicing
-class GridSliceDialog extends StatefulWidget {
+class GridSliceDialog extends ConsumerStatefulWidget {
   /// Source image width
   final int imageWidth;
 
@@ -38,10 +40,10 @@ class GridSliceDialog extends StatefulWidget {
   }
 
   @override
-  State<GridSliceDialog> createState() => _GridSliceDialogState();
+  ConsumerState<GridSliceDialog> createState() => _GridSliceDialogState();
 }
 
-class _GridSliceDialogState extends State<GridSliceDialog> {
+class _GridSliceDialogState extends ConsumerState<GridSliceDialog> {
   SliceMode _mode = SliceMode.cellSize;
 
   // Cell Size mode
@@ -58,13 +60,47 @@ class _GridSliceDialogState extends State<GridSliceDialog> {
   String _idPrefix = 'sprite';
 
   // Advanced options
-  int _paddingX = 0;
-  int _paddingY = 0;
   bool _showGridLines = true;
   bool _showCellNumbers = false;
   String _numberFormat = '001'; // 001, 01, 1
 
   String? _validationError;
+
+  @override
+  void initState() {
+    super.initState();
+    // Activate grid preview when dialog opens
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _updateGridPreview();
+    });
+  }
+
+  /// Clear grid preview and close dialog
+  void _closeDialog([GridSliceConfig? result]) {
+    // Deactivate grid preview before closing
+    ref.read(gridPreviewProvider.notifier).state = const GridPreviewState();
+    Navigator.of(context).pop(result);
+  }
+
+  /// Update grid preview state for real-time visualization
+  void _updateGridPreview() {
+    final preview = _getPreview();
+    ref.read(gridPreviewProvider.notifier).state = GridPreviewState(
+      isActive: true,
+      imageWidth: widget.imageWidth,
+      imageHeight: widget.imageHeight,
+      columns: preview.columns,
+      rows: preview.rows,
+      cellWidth: preview.cellWidth,
+      cellHeight: preview.cellHeight,
+      offsetX: _offsetX,
+      offsetY: _offsetY,
+      showGridLines: _showGridLines,
+      showCellNumbers: _showCellNumbers,
+      numberFormat: _numberFormat,
+      idPrefix: _idPrefix.isEmpty ? 'sprite' : _idPrefix,
+    );
+  }
 
   GridSliceConfig _buildConfig() {
     return GridSliceConfig(
@@ -87,6 +123,8 @@ class _GridSliceDialogState extends State<GridSliceDialog> {
         config: config,
       );
     });
+    // Update grid preview for real-time visualization
+    _updateGridPreview();
   }
 
   String _getFormattedNumber(int number) {
@@ -130,13 +168,13 @@ class _GridSliceDialogState extends State<GridSliceDialog> {
           _ApplyIntent: CallbackAction<_ApplyIntent>(
             onInvoke: (_) {
               if (_validationError == null && preview.total > 0) {
-                Navigator.of(context).pop(_buildConfig());
+                _closeDialog(_buildConfig());
               }
               return null;
             },
           ),
           _CancelIntent: CallbackAction<_CancelIntent>(
-            onInvoke: (_) => Navigator.of(context).pop(),
+            onInvoke: (_) => _closeDialog(),
           ),
         },
         child: DraggableDialog(
@@ -302,10 +340,10 @@ class _GridSliceDialogState extends State<GridSliceDialog> {
           children: [
             Expanded(
               child: _OptionButton(
-                label: '셀 크기 지정',
-                isSelected: _mode == SliceMode.cellSize,
+                label: '셀 개수 지정',
+                isSelected: _mode == SliceMode.cellCount,
                 onTap: () {
-                  setState(() => _mode = SliceMode.cellSize);
+                  setState(() => _mode = SliceMode.cellCount);
                   _validate();
                 },
               ),
@@ -313,10 +351,10 @@ class _GridSliceDialogState extends State<GridSliceDialog> {
             const SizedBox(width: 10),
             Expanded(
               child: _OptionButton(
-                label: '셀 개수 지정',
-                isSelected: _mode == SliceMode.cellCount,
+                label: '셀 크기 지정',
+                isSelected: _mode == SliceMode.cellSize,
                 onTap: () {
-                  setState(() => _mode = SliceMode.cellCount);
+                  setState(() => _mode = SliceMode.cellSize);
                   _validate();
                 },
               ),
@@ -431,37 +469,23 @@ class _GridSliceDialogState extends State<GridSliceDialog> {
         const _SectionHeader(title: '고급 옵션'),
         const SizedBox(height: 14),
 
-        // Padding
-        _SliderRow(
-          label: 'X 패딩',
-          value: _paddingX,
-          suffix: 'px',
-          min: 0,
-          max: 32,
-          onChanged: (value) => setState(() => _paddingX = value),
-        ),
-        const SizedBox(height: 14),
-        _SliderRow(
-          label: 'Y 패딩',
-          value: _paddingY,
-          suffix: 'px',
-          min: 0,
-          max: 32,
-          onChanged: (value) => setState(() => _paddingY = value),
-        ),
-        const SizedBox(height: 14),
-
         // Grid visualization toggles
         _ToggleRow(
           label: '그리드 라인 표시',
           value: _showGridLines,
-          onChanged: (value) => setState(() => _showGridLines = value),
+          onChanged: (value) {
+            setState(() => _showGridLines = value);
+            _updateGridPreview();
+          },
         ),
         const SizedBox(height: 14),
         _ToggleRow(
           label: '셀 번호 표시',
           value: _showCellNumbers,
-          onChanged: (value) => setState(() => _showCellNumbers = value),
+          onChanged: (value) {
+            setState(() => _showCellNumbers = value);
+            _updateGridPreview();
+          },
         ),
 
         // Number format (only shown when cell numbers enabled)
@@ -484,7 +508,10 @@ class _GridSliceDialogState extends State<GridSliceDialog> {
                         child: _FormatButton(
                           format: format,
                           isSelected: _numberFormat == format,
-                          onTap: () => setState(() => _numberFormat = format),
+                          onTap: () {
+                            setState(() => _numberFormat = format);
+                            _updateGridPreview();
+                          },
                         ),
                       ),
                       if (format != '1') const SizedBox(width: 8),
@@ -523,6 +550,7 @@ class _GridSliceDialogState extends State<GridSliceDialog> {
           onChanged: (value) {
             _idPrefix = value;
             setState(() {});
+            _updateGridPreview();
           },
           inputFormatters: [
             FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9_]')),
@@ -540,7 +568,7 @@ class _GridSliceDialogState extends State<GridSliceDialog> {
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(),
+            onPressed: () => _closeDialog(),
             style: TextButton.styleFrom(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               minimumSize: const Size(0, 38),
@@ -554,7 +582,7 @@ class _GridSliceDialogState extends State<GridSliceDialog> {
           const SizedBox(width: 10),
           FilledButton(
             onPressed: _validationError == null && preview.total > 0
-                ? () => Navigator.of(context).pop(_buildConfig())
+                ? () => _closeDialog(_buildConfig())
                 : null,
             style: FilledButton.styleFrom(
               padding: const EdgeInsets.symmetric(horizontal: 20),
