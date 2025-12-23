@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,6 +8,8 @@ import '../../models/animation_sequence.dart';
 import '../../providers/animation_provider.dart';
 import '../../providers/editor_state_provider.dart';
 import '../../providers/multi_sprite_provider.dart';
+import '../../providers/packing_provider.dart';
+import '../../services/bin_packing_service.dart';
 import '../../theme/editor_colors.dart';
 
 /// Animation preview zoom level state (separate from main editor zoom)
@@ -172,6 +175,21 @@ class _AnimationPreviewPanelState extends ConsumerState<AnimationPreviewPanel> {
       return _buildEmptyState('스프라이트를 찾을 수 없습니다');
     }
 
+    // 아틀라스 이미지와 패킹 결과 가져오기
+    final atlasImageAsync = ref.watch(atlasPreviewImageProvider);
+    final packingResult = ref.watch(packingResultProvider);
+
+    // 스프라이트의 패킹된 위치 찾기
+    PackedSprite? packedSprite;
+    if (packingResult != null) {
+      for (final packed in packingResult.packedSprites) {
+        if (packed.sprite.id == sprite.id) {
+          packedSprite = packed;
+          break;
+        }
+      }
+    }
+
     return LayoutBuilder(
       builder: (context, constraints) {
         return ClipRect(
@@ -187,38 +205,47 @@ class _AnimationPreviewPanelState extends ConsumerState<AnimationPreviewPanel> {
                   (scale * 100).roundToDouble();
             },
             child: Center(
-              child: Container(
-                width: sprite.sourceRect.width,
-                height: sprite.sourceRect.height,
-                decoration: BoxDecoration(
-                  color: EditorColors.surface,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.image,
-                        size: 32,
-                        color: EditorColors.iconDisabled,
+              child: atlasImageAsync.when(
+                data: (atlasImage) {
+                  if (atlasImage != null && packedSprite != null) {
+                    return CustomPaint(
+                      size: Size(
+                        packedSprite.packedRect.width,
+                        packedSprite.packedRect.height,
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '${sprite.sourceRect.width.toInt()} x ${sprite.sourceRect.height.toInt()}',
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: EditorColors.iconDisabled,
-                        ),
+                      painter: _AnimationPreviewPainter(
+                        atlasImage: atlasImage,
+                        packedRect: packedSprite.packedRect,
                       ),
-                    ],
-                  ),
-                ),
+                    );
+                  }
+                  return _buildImagePlaceholder(sprite);
+                },
+                loading: () => _buildImagePlaceholder(sprite),
+                error: (_, __) => _buildImagePlaceholder(sprite),
               ),
             ),
           ),
         );
       },
+    );
+  }
+
+  Widget _buildImagePlaceholder(dynamic sprite) {
+    return Container(
+      width: sprite.sourceRect.width,
+      height: sprite.sourceRect.height,
+      decoration: BoxDecoration(
+        color: EditorColors.surface,
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Center(
+        child: Icon(
+          Icons.image,
+          size: 32,
+          color: EditorColors.iconDisabled,
+        ),
+      ),
     );
   }
 
@@ -345,6 +372,40 @@ class _AnimationPreviewPanelState extends ConsumerState<AnimationPreviewPanel> {
   void _resetZoom() {
     _transformController.value = Matrix4.identity();
     ref.read(animationPreviewZoomProvider.notifier).state = 100.0;
+  }
+}
+
+/// Custom painter for animation preview (from atlas image)
+class _AnimationPreviewPainter extends CustomPainter {
+  final ui.Image atlasImage;
+  final Rect packedRect;
+
+  _AnimationPreviewPainter({
+    required this.atlasImage,
+    required this.packedRect,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (packedRect.isEmpty || packedRect.width <= 0 || packedRect.height <= 0) {
+      return;
+    }
+
+    final destRect = Rect.fromLTWH(0, 0, size.width, size.height);
+
+    // Draw sprite from atlas image
+    canvas.drawImageRect(
+      atlasImage,
+      packedRect,
+      destRect,
+      Paint()..filterQuality = FilterQuality.medium,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _AnimationPreviewPainter oldDelegate) {
+    return atlasImage != oldDelegate.atlasImage ||
+        packedRect != oldDelegate.packedRect;
   }
 }
 

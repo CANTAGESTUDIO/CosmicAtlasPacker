@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -6,6 +8,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/animation_sequence.dart';
 import '../../providers/animation_provider.dart';
 import '../../providers/multi_sprite_provider.dart';
+import '../../providers/packing_provider.dart';
+import '../../services/bin_packing_service.dart';
 import '../../theme/editor_colors.dart';
 import '../common/editor_text_field.dart';
 
@@ -201,12 +205,14 @@ class _AnimationTimelinePanelState extends ConsumerState<AnimationTimelinePanel>
             // 상단 4, 하단 12 (스크롤바 공간 확보)
             padding: const EdgeInsets.fromLTRB(8, 4, 8, 12),
             buildDefaultDragHandles: false,
-            proxyDecorator: (child, index, animation) {
+            shrinkWrap: true,
+            proxyDecorator: (child, index, anim) {
               // 드래그 중인 아이템의 높이를 고정하여 overflow 방지
               return Material(
                 color: Colors.transparent,
-                child: SizedBox(
-                  height: 142,
+                elevation: 4,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 142),
                   child: child,
                 ),
               );
@@ -335,7 +341,7 @@ class _PlaybackButton extends StatelessWidget {
   }
 }
 
-class _FrameTile extends StatefulWidget {
+class _FrameTile extends ConsumerStatefulWidget {
   final AnimationFrame frame;
   final int index;
   final bool isCurrentFrame;
@@ -352,10 +358,10 @@ class _FrameTile extends StatefulWidget {
   });
 
   @override
-  State<_FrameTile> createState() => _FrameTileState();
+  ConsumerState<_FrameTile> createState() => _FrameTileState();
 }
 
-class _FrameTileState extends State<_FrameTile> {
+class _FrameTileState extends ConsumerState<_FrameTile> {
   late TextEditingController _durationController;
   final FocusNode _focusNode = FocusNode();
 
@@ -394,6 +400,21 @@ class _FrameTileState extends State<_FrameTile> {
 
   @override
   Widget build(BuildContext context) {
+    // 아틀라스 이미지와 패킹 결과 가져오기
+    final atlasImageAsync = ref.watch(atlasPreviewImageProvider);
+    final packingResult = ref.watch(packingResultProvider);
+
+    // 스프라이트의 패킹된 위치 찾기
+    PackedSprite? packedSprite;
+    if (packingResult != null) {
+      for (final packed in packingResult.packedSprites) {
+        if (packed.sprite.id == widget.frame.spriteId) {
+          packedSprite = packed;
+          break;
+        }
+      }
+    }
+
     // 타일 고정 높이: 썸네일(72) + spacing(6) + text(16) + spacing(6) + input(26) + padding(16) = 142
     return ReorderableDragStartListener(
       index: widget.index,
@@ -418,7 +439,7 @@ class _FrameTileState extends State<_FrameTile> {
             mainAxisAlignment: MainAxisAlignment.center,
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Frame thumbnail placeholder
+              // Frame thumbnail
               Container(
                 width: 72,
                 height: 72,
@@ -426,12 +447,22 @@ class _FrameTileState extends State<_FrameTile> {
                   color: EditorColors.panelBackground,
                   borderRadius: BorderRadius.circular(4),
                 ),
-                child: Center(
-                  child: Icon(
-                    Icons.image,
-                    size: 32,
-                    color: EditorColors.iconDisabled,
-                  ),
+                clipBehavior: Clip.antiAlias,
+                child: atlasImageAsync.when(
+                  data: (atlasImage) {
+                    if (atlasImage != null && packedSprite != null) {
+                      return CustomPaint(
+                        size: const Size(72, 72),
+                        painter: _FrameThumbnailPainter(
+                          atlasImage: atlasImage,
+                          packedRect: packedSprite.packedRect,
+                        ),
+                      );
+                    }
+                    return _buildPlaceholder();
+                  },
+                  loading: () => _buildPlaceholder(),
+                  error: (_, __) => _buildPlaceholder(),
                 ),
               ),
               const SizedBox(height: 6),
@@ -462,6 +493,63 @@ class _FrameTileState extends State<_FrameTile> {
         ),
       ),
     );
+  }
+
+  Widget _buildPlaceholder() {
+    return Center(
+      child: Icon(
+        Icons.image,
+        size: 32,
+        color: EditorColors.iconDisabled,
+      ),
+    );
+  }
+}
+
+/// Custom painter for frame thumbnail (from atlas image)
+class _FrameThumbnailPainter extends CustomPainter {
+  final ui.Image atlasImage;
+  final Rect packedRect;
+
+  _FrameThumbnailPainter({
+    required this.atlasImage,
+    required this.packedRect,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (packedRect.isEmpty || packedRect.width <= 0 || packedRect.height <= 0) {
+      return;
+    }
+
+    // Calculate scale to fit sprite in thumbnail area
+    final scaleX = size.width / packedRect.width;
+    final scaleY = size.height / packedRect.height;
+    final scale = scaleX < scaleY ? scaleX : scaleY;
+
+    final destWidth = packedRect.width * scale;
+    final destHeight = packedRect.height * scale;
+
+    final destRect = Rect.fromLTWH(
+      (size.width - destWidth) / 2,
+      (size.height - destHeight) / 2,
+      destWidth,
+      destHeight,
+    );
+
+    // Draw sprite from atlas image
+    canvas.drawImageRect(
+      atlasImage,
+      packedRect,
+      destRect,
+      Paint()..filterQuality = FilterQuality.medium,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _FrameThumbnailPainter oldDelegate) {
+    return atlasImage != oldDelegate.atlasImage ||
+        packedRect != oldDelegate.packedRect;
   }
 }
 
