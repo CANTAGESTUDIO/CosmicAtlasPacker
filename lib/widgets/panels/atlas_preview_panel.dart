@@ -1,8 +1,8 @@
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:vector_math/vector_math_64.dart' as vm;
 
 import '../../providers/editor_state_provider.dart';
 import '../../providers/packing_provider.dart';
@@ -139,11 +139,17 @@ class _AtlasPreviewPanelState extends ConsumerState<AtlasPreviewPanel> {
                         ),
                       ),
                     ),
+                    // Trim controls (right top)
+                    Positioned(
+                      top: 8,
+                      right: 12,
+                      child: _buildTrimControls(),
+                    ),
                     // Loading indicator while generating atlas preview
                     if (atlasPreviewAsync.isLoading)
                       Positioned(
                         top: 8,
-                        right: 8,
+                        left: 12,
                         child: Container(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 8,
@@ -257,25 +263,9 @@ class _AtlasPreviewPanelState extends ConsumerState<AtlasPreviewPanel> {
             '${result.packedSprites.length} sprites',
             style: TextStyle(fontSize: 12, color: EditorColors.iconDefault),
           ),
-          const Spacer(),
-          // Efficiency - text label instead of icon
-          Text(
-            'Efficiency ${efficiency.toStringAsFixed(1)}%',
-            style: TextStyle(
-              fontSize: 12,
-              color: _getEfficiencyColor(efficiency),
-              fontWeight: FontWeight.w500,
-            ),
-          ),
         ],
       ),
     );
-  }
-
-  Color _getEfficiencyColor(double efficiency) {
-    if (efficiency >= 80) return EditorColors.secondary;
-    if (efficiency >= 60) return EditorColors.warning;
-    return EditorColors.error;
   }
 
   Widget _buildZoomControls(Size viewportSize, int atlasWidth, int atlasHeight) {
@@ -341,6 +331,271 @@ class _AtlasPreviewPanelState extends ConsumerState<AtlasPreviewPanel> {
             padding: EdgeInsets.zero,
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildTrimControls() {
+    final settings = ref.watch(atlasSettingsProvider);
+    final notifier = ref.read(atlasSettingsProvider.notifier);
+    final cropValue = settings.edgeCrop;
+    final isActive = cropValue > 0;
+    final efficiency = ref.watch(packingEfficiencyProvider);
+
+    return Container(
+      width: 220,
+      decoration: BoxDecoration(
+        color: EditorColors.panelBackground.withValues(alpha: 0.95),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: EditorColors.border),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(10),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // --- Edge Erosion Section ---
+            Row(
+              children: [
+                Icon(
+                  Icons.crop,
+                  size: 14,
+                  color: isActive
+                      ? EditorColors.primary
+                      : EditorColors.iconDefault,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  '가장자리 침식',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                    color: isActive
+                        ? EditorColors.primary
+                        : EditorColors.iconDefault,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            // Slider + Input (supports decimal)
+            Row(
+              children: [
+                // Slider
+                Expanded(
+                  child: SliderTheme(
+                    data: SliderTheme.of(context).copyWith(
+                      trackHeight: 2,
+                      thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                      overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+                    ),
+                    child: Slider(
+                      value: cropValue,
+                      min: 0,
+                      max: 64,
+                      divisions: 640, // 0.1 단위
+                      onChanged: (v) => notifier.updateEdgeCrop(v),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                // Number input (supports decimal)
+                _EdgeCropInput(
+                  value: cropValue,
+                  onChanged: notifier.updateEdgeCrop,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  'px',
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: EditorColors.iconDisabled,
+                  ),
+                ),
+              ],
+            ),
+            // Anti-aliasing toggle (only show when erosion is active)
+            if (isActive) ...[
+              const SizedBox(height: 6),
+              _buildAntiAliasToggle(ref, settings.erosionAntiAlias),
+            ],
+
+            // --- Packing Options Section ---
+            const SizedBox(height: 12),
+            Container(
+              height: 1,
+              color: EditorColors.border.withValues(alpha: 0.5),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Icon(
+                  Icons.grid_view,
+                  size: 14,
+                  color: EditorColors.iconDefault,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  '패킹 옵션',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                    color: EditorColors.iconDefault,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            // Rotate toggle
+            _buildOptionToggle(
+              label: 'Rotate',
+              isEnabled: settings.allowRotation,
+              onTap: () => notifier.toggleAllowRotation(),
+            ),
+            const SizedBox(height: 8),
+            // Padding slider
+            Row(
+              children: [
+                Text(
+                  'Padding',
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: settings.tightPacking
+                        ? EditorColors.iconDisabled
+                        : EditorColors.iconDefault,
+                  ),
+                ),
+                const Spacer(),
+                SizedBox(
+                  width: 80,
+                  child: SliderTheme(
+                    data: SliderTheme.of(context).copyWith(
+                      trackHeight: 2,
+                      thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
+                      overlayShape: const RoundSliderOverlayShape(overlayRadius: 10),
+                      disabledActiveTrackColor: EditorColors.iconDisabled,
+                      disabledInactiveTrackColor: EditorColors.border,
+                      disabledThumbColor: EditorColors.iconDisabled,
+                    ),
+                    child: Slider(
+                      value: settings.padding.toDouble(),
+                      min: 0,
+                      max: 32,
+                      divisions: 32,
+                      onChanged: settings.tightPacking
+                          ? null
+                          : (v) => notifier.updatePadding(v.round()),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 4),
+                _PaddingInput(
+                  value: settings.padding,
+                  enabled: !settings.tightPacking,
+                  onChanged: notifier.updatePadding,
+                ),
+                const SizedBox(width: 2),
+                Text(
+                  'px',
+                  style: TextStyle(
+                    fontSize: 9,
+                    color: EditorColors.iconDisabled,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            // Tight Packing toggle
+            _buildOptionToggle(
+              label: 'Tight Packing (padding=0)',
+              isEnabled: settings.tightPacking,
+              onTap: () => notifier.toggleTightPacking(),
+            ),
+
+            // --- Efficiency ---
+            const SizedBox(height: 12),
+            Container(
+              height: 1,
+              color: EditorColors.border.withValues(alpha: 0.5),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'Efficiency: ${efficiency.toStringAsFixed(1)}%',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+                color: _getEfficiencyColor(efficiency),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Color _getEfficiencyColor(double efficiency) {
+    if (efficiency >= 80) return EditorColors.secondary;
+    if (efficiency >= 60) return EditorColors.warning;
+    return EditorColors.error;
+  }
+
+  Widget _buildOptionToggle({
+    required String label,
+    required bool isEnabled,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              isEnabled ? Icons.check_box : Icons.check_box_outline_blank,
+              size: 14,
+              color: isEnabled ? EditorColors.primary : EditorColors.iconDefault,
+            ),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 10,
+                color: isEnabled ? EditorColors.primary : EditorColors.iconDefault,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAntiAliasToggle(WidgetRef ref, bool isEnabled) {
+    final notifier = ref.read(atlasSettingsProvider.notifier);
+
+    return GestureDetector(
+      onTap: () => notifier.toggleErosionAntiAlias(),
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              isEnabled ? Icons.check_box : Icons.check_box_outline_blank,
+              size: 14,
+              color: isEnabled ? EditorColors.primary : EditorColors.iconDefault,
+            ),
+            const SizedBox(width: 4),
+            Text(
+              '안티앨리어싱',
+              style: TextStyle(
+                fontSize: 10,
+                color: isEnabled ? EditorColors.primary : EditorColors.iconDefault,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -547,5 +802,274 @@ class AtlasPreviewPainter extends CustomPainter {
     return packingResult != oldDelegate.packingResult ||
         atlasImage != oldDelegate.atlasImage ||
         hoveredSpriteId != oldDelegate.hoveredSpriteId;
+  }
+}
+
+/// Number input for edge crop value (supports decimal)
+class _EdgeCropInput extends StatefulWidget {
+  final double value;
+  final ValueChanged<double> onChanged;
+
+  const _EdgeCropInput({
+    required this.value,
+    required this.onChanged,
+  });
+
+  @override
+  State<_EdgeCropInput> createState() => _EdgeCropInputState();
+}
+
+class _EdgeCropInputState extends State<_EdgeCropInput> {
+  late TextEditingController _controller;
+  late FocusNode _focusNode;
+  bool _isEditing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: _formatValue(widget.value));
+    _focusNode = FocusNode();
+    _focusNode.addListener(_onFocusChange);
+  }
+
+  String _formatValue(double value) {
+    // Show integer if whole number, otherwise show 1 decimal
+    if (value == value.truncateToDouble()) {
+      return value.toInt().toString();
+    }
+    return value.toStringAsFixed(1);
+  }
+
+  @override
+  void didUpdateWidget(_EdgeCropInput oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_isEditing && widget.value != oldWidget.value) {
+      _controller.text = _formatValue(widget.value);
+    }
+  }
+
+  @override
+  void dispose() {
+    _focusNode.removeListener(_onFocusChange);
+    _focusNode.dispose();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _onFocusChange() {
+    if (_focusNode.hasFocus) {
+      _isEditing = true;
+      _controller.selection = TextSelection(
+        baseOffset: 0,
+        extentOffset: _controller.text.length,
+      );
+    } else {
+      _isEditing = false;
+      _submitValue();
+    }
+  }
+
+  void _submitValue() {
+    final text = _controller.text.trim();
+    if (text.isEmpty) {
+      _controller.text = _formatValue(widget.value);
+      return;
+    }
+    final parsed = double.tryParse(text);
+    if (parsed != null) {
+      final clamped = parsed.clamp(0.0, 64.0);
+      widget.onChanged(clamped);
+      _controller.text = _formatValue(clamped);
+    } else {
+      _controller.text = _formatValue(widget.value);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Wrap with Focus to intercept key events and prevent parent from handling them
+    return Focus(
+      skipTraversal: true,
+      onKeyEvent: (node, event) {
+        // When TextField has focus, mark key events as handled
+        // to prevent parent Shortcuts widget from intercepting backspace/delete
+        if (_focusNode.hasFocus) {
+          return KeyEventResult.skipRemainingHandlers;
+        }
+        return KeyEventResult.ignored;
+      },
+      child: SizedBox(
+        width: 42,
+        height: 22,
+        child: TextField(
+          controller: _controller,
+          focusNode: _focusNode,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 11,
+            color: EditorColors.iconDefault,
+          ),
+          decoration: InputDecoration(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(4),
+              borderSide: BorderSide(color: EditorColors.border),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(4),
+              borderSide: BorderSide(color: EditorColors.border),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(4),
+              borderSide: BorderSide(color: EditorColors.primary),
+            ),
+            filled: true,
+            fillColor: EditorColors.inputBackground,
+            isDense: true,
+          ),
+          inputFormatters: [
+            FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*$')),
+            LengthLimitingTextInputFormatter(4),
+          ],
+          onSubmitted: (_) => _submitValue(),
+        ),
+      ),
+    );
+  }
+}
+
+/// Number input for padding value (integer, with backspace support)
+class _PaddingInput extends StatefulWidget {
+  final int value;
+  final bool enabled;
+  final ValueChanged<int> onChanged;
+
+  const _PaddingInput({
+    required this.value,
+    required this.enabled,
+    required this.onChanged,
+  });
+
+  @override
+  State<_PaddingInput> createState() => _PaddingInputState();
+}
+
+class _PaddingInputState extends State<_PaddingInput> {
+  late TextEditingController _controller;
+  late FocusNode _focusNode;
+  bool _isEditing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.value.toString());
+    _focusNode = FocusNode();
+    _focusNode.addListener(_onFocusChange);
+  }
+
+  @override
+  void didUpdateWidget(_PaddingInput oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_isEditing && widget.value != oldWidget.value) {
+      _controller.text = widget.value.toString();
+    }
+  }
+
+  @override
+  void dispose() {
+    _focusNode.removeListener(_onFocusChange);
+    _focusNode.dispose();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _onFocusChange() {
+    if (_focusNode.hasFocus) {
+      _isEditing = true;
+      _controller.selection = TextSelection(
+        baseOffset: 0,
+        extentOffset: _controller.text.length,
+      );
+    } else {
+      _isEditing = false;
+      _submitValue();
+    }
+  }
+
+  void _submitValue() {
+    final text = _controller.text.trim();
+    if (text.isEmpty) {
+      _controller.text = widget.value.toString();
+      return;
+    }
+    final parsed = int.tryParse(text);
+    if (parsed != null) {
+      final clamped = parsed.clamp(0, 32);
+      widget.onChanged(clamped);
+      _controller.text = clamped.toString();
+    } else {
+      _controller.text = widget.value.toString();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Wrap with Focus to intercept key events and prevent parent from handling them
+    return Focus(
+      skipTraversal: true,
+      onKeyEvent: (node, event) {
+        // When TextField has focus, mark key events as handled
+        // to prevent parent Shortcuts widget from intercepting backspace/delete
+        if (_focusNode.hasFocus) {
+          return KeyEventResult.skipRemainingHandlers;
+        }
+        return KeyEventResult.ignored;
+      },
+      child: SizedBox(
+        width: 28,
+        height: 20,
+        child: TextField(
+          controller: _controller,
+          focusNode: _focusNode,
+          enabled: widget.enabled,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 10,
+            color: widget.enabled
+                ? EditorColors.iconDefault
+                : EditorColors.iconDisabled,
+          ),
+          decoration: InputDecoration(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(3),
+              borderSide: BorderSide(color: EditorColors.border),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(3),
+              borderSide: BorderSide(color: EditorColors.border),
+            ),
+            disabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(3),
+              borderSide: BorderSide(color: EditorColors.border.withValues(alpha: 0.5)),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(3),
+              borderSide: BorderSide(color: EditorColors.primary),
+            ),
+            filled: true,
+            fillColor: widget.enabled
+                ? EditorColors.inputBackground
+                : EditorColors.inputBackground.withValues(alpha: 0.5),
+            isDense: true,
+          ),
+          inputFormatters: [
+            FilteringTextInputFormatter.digitsOnly,
+            LengthLimitingTextInputFormatter(2),
+          ],
+          onSubmitted: (_) => _submitValue(),
+        ),
+      ),
+    );
   }
 }

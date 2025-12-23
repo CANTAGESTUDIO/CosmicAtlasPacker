@@ -26,6 +26,11 @@ class SpriteRegion {
   /// Original position before any movement (for undo/reference)
   final ui.Offset? originalPosition;
 
+  /// Trimmed rect within the sprite (relative to sourceRect origin)
+  /// Contains only non-transparent pixels bounding box
+  /// null means not trimmed (use full sourceRect)
+  final ui.Rect? trimmedRect;
+
   const SpriteRegion({
     required this.id,
     required this.sourceRect,
@@ -36,6 +41,7 @@ class SpriteRegion {
     this.imageBytes,
     this.uiImage,
     this.originalPosition,
+    this.trimmedRect,
   });
 
   SpriteRegion copyWith({
@@ -52,6 +58,8 @@ class SpriteRegion {
     bool clearUiImage = false,
     ui.Offset? originalPosition,
     bool clearOriginalPosition = false,
+    ui.Rect? trimmedRect,
+    bool clearTrimmedRect = false,
   }) {
     return SpriteRegion(
       id: id ?? this.id,
@@ -63,6 +71,7 @@ class SpriteRegion {
       imageBytes: clearImageBytes ? null : (imageBytes ?? this.imageBytes),
       uiImage: clearUiImage ? null : (uiImage ?? this.uiImage),
       originalPosition: clearOriginalPosition ? null : (originalPosition ?? this.originalPosition),
+      trimmedRect: clearTrimmedRect ? null : (trimmedRect ?? this.trimmedRect),
     );
   }
 
@@ -72,14 +81,26 @@ class SpriteRegion {
   /// Check if 9-slice is enabled for this sprite
   bool get hasNineSlice => nineSlice != null && nineSlice!.isEnabled;
 
-  /// Area in pixels
-  int get area => (sourceRect.width * sourceRect.height).round();
+  /// Check if this sprite has been trimmed
+  bool get hasTrimmedRect => trimmedRect != null;
 
-  /// Width in pixels
-  int get width => sourceRect.width.round();
+  /// Get effective rect for packing (trimmed if available, otherwise source)
+  ui.Rect get effectiveRect => trimmedRect ?? sourceRect;
 
-  /// Height in pixels
-  int get height => sourceRect.height.round();
+  /// Area in pixels (uses effective rect)
+  int get area => (effectiveRect.width * effectiveRect.height).round();
+
+  /// Width in pixels (uses effective rect for packing)
+  int get width => effectiveRect.width.round();
+
+  /// Height in pixels (uses effective rect for packing)
+  int get height => effectiveRect.height.round();
+
+  /// Original source width (ignoring trim)
+  int get sourceWidth => sourceRect.width.round();
+
+  /// Original source height (ignoring trim)
+  int get sourceHeight => sourceRect.height.round();
 
   /// Get pivot position in canvas coordinates
   ui.Offset get pivotPosition {

@@ -24,8 +24,9 @@ class BackgroundRemoveConfig {
   /// Enable antialiasing for edge smoothness
   final bool antialias;
 
-  /// Alpha threshold for feathering (0-255)
-  /// Pixels with alpha below this value are fully transparent
+  /// Alpha threshold for final cleanup (0-255)
+  /// Pixels with alpha below this value become fully transparent
+  /// Applied AFTER feathering/antialiasing to clean up semi-transparent edges
   final int alphaThreshold;
 
   const BackgroundRemoveConfig({
@@ -34,7 +35,7 @@ class BackgroundRemoveConfig {
     this.contiguousOnly = true,
     this.featherRadius = 0,
     this.antialias = false,
-    this.alphaThreshold = 10,
+    this.alphaThreshold = 0,
   });
 }
 
@@ -84,6 +85,7 @@ class BackgroundRemoverService {
         tolerance: config.tolerance,
         contiguousOnly: config.contiguousOnly,
         featherRadius: config.featherRadius,
+        antialias: config.antialias,
         alphaThreshold: config.alphaThreshold,
       ),
     );
@@ -194,6 +196,7 @@ class _IsolateInput {
   final int tolerance;
   final bool contiguousOnly;
   final int featherRadius;
+  final bool antialias;
   final int alphaThreshold;
 
   const _IsolateInput({
@@ -206,6 +209,7 @@ class _IsolateInput {
     required this.tolerance,
     required this.contiguousOnly,
     required this.featherRadius,
+    required this.antialias,
     required this.alphaThreshold,
   });
 }
@@ -293,17 +297,6 @@ _IsolateOutput _processInIsolate(_IsolateInput input) {
     }
   }
 
-  // Apply alpha threshold
-  if (input.alphaThreshold > 0) {
-    for (int i = 0; i < width * height; i++) {
-      final pixelIdx = i * 4;
-      if (bytes[pixelIdx + 3] < input.alphaThreshold) {
-        bytes[pixelIdx + 3] = 0;
-        pixelsRemoved++;
-      }
-    }
-  }
-
   // Apply feathering if requested
   if (input.featherRadius > 0) {
     final alphaBytes = List<int>.generate(width * height, (i) => bytes[i * 4 + 3]);
@@ -316,6 +309,28 @@ _IsolateOutput _processInIsolate(_IsolateInput input) {
 
     for (int i = 0; i < width * height; i++) {
       bytes[i * 4 + 3] = featheredAlpha[i];
+    }
+  }
+
+  // Apply antialiasing if requested
+  if (input.antialias) {
+    final alphaBytes = List<int>.generate(width * height, (i) => bytes[i * 4 + 3]);
+    final antialiasedAlpha = _applyAntialiasing(alphaBytes, width, height);
+
+    for (int i = 0; i < width * height; i++) {
+      bytes[i * 4 + 3] = antialiasedAlpha[i];
+    }
+  }
+
+  // Apply alpha threshold AFTER feathering/antialiasing
+  // This cleans up semi-transparent pixels created by edge processing
+  if (input.alphaThreshold > 0) {
+    for (int i = 0; i < width * height; i++) {
+      final pixelIdx = i * 4;
+      if (bytes[pixelIdx + 3] > 0 && bytes[pixelIdx + 3] < input.alphaThreshold) {
+        bytes[pixelIdx + 3] = 0;
+        pixelsRemoved++;
+      }
     }
   }
 
@@ -398,4 +413,46 @@ List<double> _gaussianKernel(int radius) {
 /// Gaussian function
 double _gaussian(double x, double sigma) {
   return (1.0 / (sigma * math.sqrt(2 * math.pi))) * math.exp(-(x * x) / (2 * sigma * sigma));
+}
+
+/// Apply antialiasing to edges between transparent and opaque regions
+/// Uses fixed 50% strength for smooth edge blending
+List<int> _applyAntialiasing(List<int> alphaBytes, int width, int height) {
+  final result = List<int>.from(alphaBytes);
+
+  for (int y = 1; y < height - 1; y++) {
+    for (int x = 1; x < width - 1; x++) {
+      final idx = y * width + x;
+      final currentAlpha = alphaBytes[idx];
+
+      // Only process fully opaque pixels (edge candidates)
+      if (currentAlpha != 255) continue;
+
+      // Count transparent neighbors in 8 directions
+      int transparentCount = 0;
+
+      for (int dy = -1; dy <= 1; dy++) {
+        for (int dx = -1; dx <= 1; dx++) {
+          if (dx == 0 && dy == 0) continue;
+
+          final neighborIdx = (y + dy) * width + (x + dx);
+          if (alphaBytes[neighborIdx] == 0) {
+            transparentCount++;
+          }
+        }
+      }
+
+      // If there are transparent neighbors, this is an edge pixel
+      if (transparentCount > 0) {
+        // Fixed 50% strength: alpha can go down to ~128 (50% reduction max)
+        final transparentRatio = transparentCount / 8.0;
+        final reduction = transparentRatio * 0.5;
+        final newAlpha = (255 * (1.0 - reduction)).round();
+
+        result[idx] = newAlpha.clamp(128, 255);
+      }
+    }
+  }
+
+  return result;
 }

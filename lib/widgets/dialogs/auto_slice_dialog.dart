@@ -88,6 +88,9 @@ class _AutoSliceDialogState extends State<AutoSliceDialog> {
   bool _removeBackground = true;
   int _bgColorIndex = 0;
   int _bgTolerance = 0;
+  int _bgFeatherRadius = 0;
+  bool _bgAntialias = false;
+  int _bgAlphaThreshold = 0;
   late List<Color> _cornerColors;
   final _bgRemoverService = const BackgroundRemoverService();
 
@@ -174,6 +177,9 @@ class _AutoSliceDialogState extends State<AutoSliceDialog> {
         targetColor: _backgroundColor!,
         tolerance: _bgTolerance,
         contiguousOnly: true,
+        featherRadius: _bgFeatherRadius,
+        antialias: _bgAntialias,
+        alphaThreshold: _bgAlphaThreshold,
       ),
     );
 
@@ -298,12 +304,12 @@ class _AutoSliceDialogState extends State<AutoSliceDialog> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Current settings display
-                      _buildCurrentSettingsSection(),
-                      const SizedBox(height: 20),
-
                       // Quick presets
                       _buildPresetsSection(),
+                      const SizedBox(height: 20),
+
+                      // Expected sprite count (moved below presets)
+                      _buildCurrentSettingsSection(),
                       const SizedBox(height: 20),
 
                       // Alpha threshold
@@ -620,6 +626,50 @@ class _AutoSliceDialogState extends State<AutoSliceDialog> {
             onChanged: (value) {
               setState(() {
                 _bgTolerance = value;
+                _invalidateProcessedImage();
+              });
+              _updatePreview();
+            },
+          ),
+          const SizedBox(height: 14),
+          // Feather radius slider
+          _SliderRow(
+            label: '흐리기',
+            value: _bgFeatherRadius,
+            suffix: 'px',
+            min: 0,
+            max: 50,
+            onChanged: (value) {
+              setState(() {
+                _bgFeatherRadius = value;
+                _invalidateProcessedImage();
+              });
+              _updatePreview();
+            },
+          ),
+          const SizedBox(height: 14),
+          // Antialias toggle
+          _ToggleRow(
+            label: '안티앨리어싱',
+            value: _bgAntialias,
+            onChanged: (value) {
+              setState(() {
+                _bgAntialias = value;
+                _invalidateProcessedImage();
+              });
+              _updatePreview();
+            },
+          ),
+          const SizedBox(height: 14),
+          // Alpha threshold slider
+          _SliderRow(
+            label: '투명도 임계값',
+            value: _bgAlphaThreshold,
+            min: 0,
+            max: 128,
+            onChanged: (value) {
+              setState(() {
+                _bgAlphaThreshold = value;
                 _invalidateProcessedImage();
               });
               _updatePreview();

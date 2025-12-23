@@ -5,6 +5,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:image/image.dart' as img;
 
 import 'bin_packing_service.dart';
+import 'image_erosion_service.dart';
 
 /// Atlas metadata following PRD section 7.1 JSON schema
 ///
@@ -359,13 +360,15 @@ class ExportService {
     // Copy each sprite to its packed position
     for (final packed in packingResult.packedSprites) {
       final sprite = packed.sprite;
-      final sourceRect = sprite.sourceRect;
+      // Use effectiveRect (trimmedRect if set, otherwise sourceRect)
+      // This respects edge crop settings
+      final effectiveRect = sprite.effectiveRect;
 
       // Extract sprite from source image and copy to atlas
       for (int y = 0; y < packed.height; y++) {
         for (int x = 0; x < packed.width; x++) {
-          final srcX = sourceRect.left.round() + x;
-          final srcY = sourceRect.top.round() + y;
+          final srcX = effectiveRect.left.round() + x;
+          final srcY = effectiveRect.top.round() + y;
 
           // Bounds check for source
           if (srcX >= 0 &&
@@ -396,11 +399,17 @@ class ExportService {
   ///
   /// [sourceImages] - Map of source ID to source image (img.Image)
   /// [packingResult] - Result of bin packing algorithm
+  /// [erosionPixels] - Number of pixels to erode from sprite edges (0 = no erosion, supports decimal)
+  /// [erosionAntiAlias] - Apply anti-aliasing to smooth eroded edges
   /// Returns the composed atlas image
   img.Image generateMultiSourceAtlasImage({
     required Map<String, dynamic> sourceImages,
     required PackingResult packingResult,
+    double erosionPixels = 0,
+    bool erosionAntiAlias = false,
   }) {
+    final erosionService = ImageErosionService();
+
     // Create new RGBA image with atlas dimensions
     final atlasImage = img.Image(
       width: packingResult.atlasWidth,
@@ -414,35 +423,61 @@ class ExportService {
     // Copy each sprite to its packed position
     for (final packed in packingResult.packedSprites) {
       final sprite = packed.sprite;
-      final sourceRect = sprite.sourceRect;
       final sourceId = sprite.sourceFileId;
 
       // If sprite has extracted image data, use it directly
       if (sprite.hasImageData && sprite.imageBytes != null) {
-        final spriteWidth = sprite.width;
-        final spriteHeight = sprite.height;
+        final spriteWidth = sprite.sourceWidth;
+        final spriteHeight = sprite.sourceHeight;
         final imageBytes = sprite.imageBytes!;
 
-        // Copy from sprite's extracted image bytes (RGBA format)
-        for (int y = 0; y < spriteHeight && y < packed.height; y++) {
-          for (int x = 0; x < spriteWidth && x < packed.width; x++) {
+        // Create temporary image from bytes for erosion
+        img.Image spriteImage = img.Image(
+          width: spriteWidth,
+          height: spriteHeight,
+          numChannels: 4,
+        );
+
+        // Copy bytes to image
+        for (int y = 0; y < spriteHeight; y++) {
+          for (int x = 0; x < spriteWidth; x++) {
             final srcOffset = (y * spriteWidth + x) * 4;
             if (srcOffset + 3 < imageBytes.length) {
               final r = imageBytes[srcOffset];
               final g = imageBytes[srcOffset + 1];
               final b = imageBytes[srcOffset + 2];
               final a = imageBytes[srcOffset + 3];
+              spriteImage.setPixel(x, y, img.ColorRgba8(r, g, b, a));
+            }
+          }
+        }
 
-              final dstX = packed.x + x;
-              final dstY = packed.y + y;
+        // Apply erosion if needed
+        if (erosionPixels > 0) {
+          spriteImage = erosionService.applyErosion(
+            spriteImage,
+            erosionPixels,
+            antiAlias: erosionAntiAlias,
+          );
+        }
 
-              // Bounds check for destination
-              if (dstX >= 0 &&
-                  dstX < atlasImage.width &&
-                  dstY >= 0 &&
-                  dstY < atlasImage.height) {
-                atlasImage.setPixel(dstX, dstY, img.ColorRgba8(r, g, b, a));
-              }
+        // Apply rotation if sprite was rotated during packing
+        if (packed.isRotated) {
+          spriteImage = _rotateImage(spriteImage, packed.rotation);
+        }
+
+        // Copy to atlas
+        for (int y = 0; y < spriteImage.height && y < packed.height; y++) {
+          for (int x = 0; x < spriteImage.width && x < packed.width; x++) {
+            final pixel = spriteImage.getPixel(x, y);
+            final dstX = packed.x + x;
+            final dstY = packed.y + y;
+
+            if (dstX >= 0 &&
+                dstX < atlasImage.width &&
+                dstY >= 0 &&
+                dstY < atlasImage.height) {
+              atlasImage.setPixel(dstX, dstY, pixel);
             }
           }
         }
@@ -451,29 +486,43 @@ class ExportService {
         final sourceImage = sourceImages[sourceId] as img.Image?;
         if (sourceImage == null) continue;
 
-        // Extract sprite from source image and copy to atlas
-        for (int y = 0; y < packed.height; y++) {
-          for (int x = 0; x < packed.width; x++) {
-            final srcX = sourceRect.left.round() + x;
-            final srcY = sourceRect.top.round() + y;
+        final sourceRect = sprite.sourceRect;
 
-            // Bounds check for source
-            if (srcX >= 0 &&
-                srcX < sourceImage.width &&
-                srcY >= 0 &&
-                srcY < sourceImage.height) {
-              final pixel = sourceImage.getPixel(srcX, srcY);
+        // Extract sprite region from source image
+        img.Image spriteImage = img.copyCrop(
+          sourceImage,
+          x: sourceRect.left.round(),
+          y: sourceRect.top.round(),
+          width: sourceRect.width.round(),
+          height: sourceRect.height.round(),
+        );
 
-              final dstX = packed.x + x;
-              final dstY = packed.y + y;
+        // Apply erosion if needed
+        if (erosionPixels > 0) {
+          spriteImage = erosionService.applyErosion(
+            spriteImage,
+            erosionPixels,
+            antiAlias: erosionAntiAlias,
+          );
+        }
 
-              // Bounds check for destination
-              if (dstX >= 0 &&
-                  dstX < atlasImage.width &&
-                  dstY >= 0 &&
-                  dstY < atlasImage.height) {
-                atlasImage.setPixel(dstX, dstY, pixel);
-              }
+        // Apply rotation if sprite was rotated during packing
+        if (packed.isRotated) {
+          spriteImage = _rotateImage(spriteImage, packed.rotation);
+        }
+
+        // Copy rotated/eroded sprite to atlas
+        for (int y = 0; y < spriteImage.height && y < packed.height; y++) {
+          for (int x = 0; x < spriteImage.width && x < packed.width; x++) {
+            final pixel = spriteImage.getPixel(x, y);
+            final dstX = packed.x + x;
+            final dstY = packed.y + y;
+
+            if (dstX >= 0 &&
+                dstX < atlasImage.width &&
+                dstY >= 0 &&
+                dstY < atlasImage.height) {
+              atlasImage.setPixel(dstX, dstY, pixel);
             }
           }
         }
@@ -481,6 +530,20 @@ class ExportService {
     }
 
     return atlasImage;
+  }
+
+  /// Rotate image by specified degrees (90, 180, 270)
+  img.Image _rotateImage(img.Image source, int degrees) {
+    switch (degrees) {
+      case 90:
+        return img.copyRotate(source, angle: 90);
+      case 180:
+        return img.copyRotate(source, angle: 180);
+      case 270:
+        return img.copyRotate(source, angle: 270);
+      default:
+        return source;
+    }
   }
 
   /// Export atlas PNG to specified path

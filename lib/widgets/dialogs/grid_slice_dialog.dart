@@ -44,7 +44,7 @@ class GridSliceDialog extends ConsumerStatefulWidget {
 }
 
 class _GridSliceDialogState extends ConsumerState<GridSliceDialog> {
-  SliceMode _mode = SliceMode.cellSize;
+  SliceMode _mode = SliceMode.cellCount;
 
   // Cell Size mode
   int _cellWidth = 64;

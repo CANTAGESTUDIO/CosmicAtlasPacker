@@ -7,16 +7,21 @@ import '../models/sprite_region.dart';
 class PackedSprite {
   final SpriteRegion sprite;
   final Rect packedRect;
+  final int rotation; // 0, 90, 180, 270 degrees
 
   const PackedSprite({
     required this.sprite,
     required this.packedRect,
+    this.rotation = 0,
   });
 
   int get x => packedRect.left.round();
   int get y => packedRect.top.round();
   int get width => packedRect.width.round();
   int get height => packedRect.height.round();
+
+  /// Whether this sprite was rotated during packing
+  bool get isRotated => rotation != 0;
 }
 
 /// Result of the bin packing operation
@@ -47,7 +52,8 @@ class PackingResult {
   }
 
   /// Check if all sprites were packed successfully
-  bool get isComplete => failedSprites.isEmpty;
+  /// Returns true only if there are packed sprites AND no failed sprites
+  bool get isComplete => packedSprites.isNotEmpty && failedSprites.isEmpty;
 }
 
 /// MaxRects bin packing algorithm with Best Short Side Fit heuristic
@@ -65,12 +71,14 @@ class BinPackingService {
   /// [maxHeight] - Maximum atlas height (default 4096)
   /// [padding] - Padding between sprites (default 0)
   /// [powerOfTwo] - Ensure atlas dimensions are power of two
+  /// [allowRotation] - Allow 90 degree rotation for better packing
   PackingResult pack(
     List<SpriteRegion> sprites, {
     int maxWidth = 4096,
     int maxHeight = 4096,
     int padding = 0,
     bool powerOfTwo = false,
+    bool allowRotation = false,
   }) {
     if (sprites.isEmpty) {
       return const PackingResult(
@@ -83,27 +91,18 @@ class BinPackingService {
     // Sort sprites by area (descending) for better packing
     final sortedSprites = _sortByAreaDescending(sprites);
 
-    // Calculate initial atlas size based on total area
-    final totalArea = sortedSprites.fold<int>(
-      0,
-      (sum, s) => sum + s.area + (padding * 2) * (padding * 2),
-    );
-
-    // Start with a square-ish size that can fit all sprites
-    int atlasWidth = _nextPowerOfTwo(math.sqrt(totalArea * 1.2).ceil());
-    int atlasHeight = atlasWidth;
-
     // Ensure minimum size can fit largest sprite
     final maxSpriteWidth = sortedSprites.map((s) => s.width + padding * 2).reduce((a, b) => a > b ? a : b);
     final maxSpriteHeight = sortedSprites.map((s) => s.height + padding * 2).reduce((a, b) => a > b ? a : b);
 
-    atlasWidth = atlasWidth < maxSpriteWidth ? _nextPowerOfTwo(maxSpriteWidth) : atlasWidth;
-    atlasHeight = atlasHeight < maxSpriteHeight ? _nextPowerOfTwo(maxSpriteHeight) : atlasHeight;
+    // Start with smallest power-of-2 that fits largest sprite
+    int atlasWidth = _nextPowerOfTwo(maxSpriteWidth);
+    int atlasHeight = _nextPowerOfTwo(maxSpriteHeight);
 
     // Try packing, grow atlas if needed
     PackingResult? result;
     while (atlasWidth <= maxWidth && atlasHeight <= maxHeight) {
-      result = _tryPack(sortedSprites, atlasWidth, atlasHeight, padding);
+      result = _tryPack(sortedSprites, atlasWidth, atlasHeight, padding, allowRotation);
 
       if (result.isComplete) {
         // Shrink atlas to minimum required size
@@ -141,6 +140,7 @@ class BinPackingService {
     int atlasWidth,
     int atlasHeight,
     int padding,
+    bool allowRotation,
   ) {
     // Initialize free rectangles with full atlas area
     final freeRects = <Rect>[
@@ -154,33 +154,41 @@ class BinPackingService {
       final spriteWidth = sprite.width + padding * 2;
       final spriteHeight = sprite.height + padding * 2;
 
-      // Find best position using BSSF heuristic
-      final placement = _findBestPosition(
+      // Find best position using BSSF heuristic (with optional rotation)
+      final placement = _findBestPositionWithRotation(
         freeRects,
         spriteWidth,
         spriteHeight,
+        allowRotation,
       );
 
       if (placement != null) {
+        final isRotated = placement.rotation == 90;
+        final actualWidth = isRotated ? sprite.height : sprite.width;
+        final actualHeight = isRotated ? sprite.width : sprite.height;
+
         // Calculate actual sprite position (accounting for padding)
         final packedRect = Rect.fromLTWH(
-          placement.left + padding,
-          placement.top + padding,
-          sprite.width.toDouble(),
-          sprite.height.toDouble(),
+          placement.rect.left + padding,
+          placement.rect.top + padding,
+          actualWidth.toDouble(),
+          actualHeight.toDouble(),
         );
 
         packedSprites.add(PackedSprite(
           sprite: sprite,
           packedRect: packedRect,
+          rotation: placement.rotation,
         ));
 
         // Split free rectangles (Guillotine method)
+        final usedWidth = isRotated ? spriteHeight : spriteWidth;
+        final usedHeight = isRotated ? spriteWidth : spriteHeight;
         _splitFreeRects(freeRects, Rect.fromLTWH(
-          placement.left,
-          placement.top,
-          spriteWidth.toDouble(),
-          spriteHeight.toDouble(),
+          placement.rect.left,
+          placement.rect.top,
+          usedWidth.toDouble(),
+          usedHeight.toDouble(),
         ));
 
         // Prune overlapping free rectangles
@@ -196,6 +204,56 @@ class BinPackingService {
       atlasHeight: atlasHeight,
       failedSprites: failedSprites,
     );
+  }
+
+  /// Result of finding best position (includes rotation info)
+  _PlacementResult? _findBestPositionWithRotation(
+    List<Rect> freeRects,
+    int spriteWidth,
+    int spriteHeight,
+    bool allowRotation,
+  ) {
+    _PlacementResult? bestResult;
+    int bestShortSide = 0x7FFFFFFF;
+    int bestLongSide = 0x7FFFFFFF;
+
+    // Try original orientation
+    final normalResult = _findBestPosition(freeRects, spriteWidth, spriteHeight);
+    if (normalResult != null) {
+      final leftoverX = (normalResult.width - spriteWidth).round();
+      final leftoverY = (normalResult.height - spriteHeight).round();
+      final shortSide = leftoverX < leftoverY ? leftoverX : leftoverY;
+      final longSide = leftoverX > leftoverY ? leftoverX : leftoverY;
+
+      bestResult = _PlacementResult(
+        rect: Rect.fromLTWH(normalResult.left, normalResult.top, spriteWidth.toDouble(), spriteHeight.toDouble()),
+        rotation: 0,
+      );
+      bestShortSide = shortSide;
+      bestLongSide = longSide;
+    }
+
+    // Try 90 degree rotation if allowed and sprite is not square
+    if (allowRotation && spriteWidth != spriteHeight) {
+      final rotatedResult = _findBestPosition(freeRects, spriteHeight, spriteWidth);
+      if (rotatedResult != null) {
+        final leftoverX = (rotatedResult.width - spriteHeight).round();
+        final leftoverY = (rotatedResult.height - spriteWidth).round();
+        final shortSide = leftoverX < leftoverY ? leftoverX : leftoverY;
+        final longSide = leftoverX > leftoverY ? leftoverX : leftoverY;
+
+        // Use rotated if it's a better fit
+        if (shortSide < bestShortSide ||
+            (shortSide == bestShortSide && longSide < bestLongSide)) {
+          bestResult = _PlacementResult(
+            rect: Rect.fromLTWH(rotatedResult.left, rotatedResult.top, spriteHeight.toDouble(), spriteWidth.toDouble()),
+            rotation: 90,
+          );
+        }
+      }
+    }
+
+    return bestResult;
   }
 
   /// Find best position using Best Short Side Fit heuristic
@@ -372,4 +430,15 @@ class BinPackingService {
     value |= value >> 16;
     return value + 1;
   }
+}
+
+/// Internal class for placement result with rotation info
+class _PlacementResult {
+  final Rect rect;
+  final int rotation; // 0 or 90
+
+  const _PlacementResult({
+    required this.rect,
+    required this.rotation,
+  });
 }

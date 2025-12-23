@@ -63,6 +63,24 @@ class AtlasSettingsNotifier extends StateNotifier<AtlasSettings> {
   void resetToDefaults() {
     state = const AtlasSettings();
   }
+
+  void updateEdgeCrop(double value) {
+    if (value >= 0 && value <= 64) {
+      state = state.copyWith(edgeCrop: value);
+    }
+  }
+
+  void toggleErosionAntiAlias() {
+    state = state.copyWith(erosionAntiAlias: !state.erosionAntiAlias);
+  }
+
+  void toggleAllowRotation() {
+    state = state.copyWith(allowRotation: !state.allowRotation);
+  }
+
+  void toggleTightPacking() {
+    state = state.copyWith(tightPacking: !state.tightPacking);
+  }
 }
 
 /// Provider for bin packing service
@@ -126,6 +144,7 @@ final atlasSpritesProvider = Provider<List<SpriteRegion>>((ref) {
   return allSprites;
 });
 
+
 /// Provider for packing result - supports both single and merge mode
 final packingResultProvider = Provider<PackingResult?>((ref) {
   final sprites = ref.watch(atlasSpritesProvider);
@@ -136,12 +155,16 @@ final packingResultProvider = Provider<PackingResult?>((ref) {
     return null;
   }
 
+  // Tight packing forces padding to 0
+  final effectivePadding = settings.tightPacking ? 0 : settings.padding;
+
   return packingService.pack(
     sprites,
     maxWidth: settings.maxWidth,
     maxHeight: settings.maxHeight,
-    padding: settings.padding,
+    padding: effectivePadding,
     powerOfTwo: settings.powerOfTwo,
+    allowRotation: settings.allowRotation,
   );
 });
 
@@ -194,26 +217,16 @@ final _exportServiceProvider = Provider<ExportService>((ref) {
 /// Uses ORIGINAL images for region mode (sprite extraction from source)
 /// Uses PROCESSED images for separated mode (sprites have their own imageBytes)
 /// Supports both single source and merge mode
+/// Applies erosion based on edgeCrop setting
 final atlasPreviewImageProvider = FutureProvider.autoDispose<ui.Image?>((ref) async {
   final atlasSources = ref.watch(atlasSourcesProvider);
-  final atlasSprites = ref.watch(atlasSpritesProvider);
   final settings = ref.watch(atlasSettingsProvider);
-  final packingService = ref.watch(binPackingServiceProvider);
 
-  if (atlasSprites.isEmpty || atlasSources.isEmpty) {
-    return null;
-  }
+  // Reuse packingResultProvider instead of packing again
+  // This ensures data consistency and avoids duplicate packing
+  final packingResult = ref.watch(packingResultProvider);
 
-  // Pack sprites
-  final packingResult = packingService.pack(
-    atlasSprites,
-    maxWidth: settings.maxWidth,
-    maxHeight: settings.maxHeight,
-    padding: settings.padding,
-    powerOfTwo: settings.powerOfTwo,
-  );
-
-  if (packingResult.packedSprites.isEmpty) {
+  if (packingResult == null || packingResult.packedSprites.isEmpty || atlasSources.isEmpty) {
     return null;
   }
 
@@ -230,11 +243,13 @@ final atlasPreviewImageProvider = FutureProvider.autoDispose<ui.Image?>((ref) as
     sourceImages[source.id] = source.effectiveRawImage;
   }
 
-  // Generate atlas image using ExportService
+  // Generate atlas image using ExportService with erosion applied
   final exportService = ref.read(_exportServiceProvider);
   final atlasImage = exportService.generateMultiSourceAtlasImage(
     sourceImages: sourceImages,
     packingResult: packingResult,
+    erosionPixels: settings.edgeCrop,
+    erosionAntiAlias: settings.erosionAntiAlias,
   );
 
   // Convert img.Image to ui.Image for rendering
@@ -250,3 +265,4 @@ final activeSourceSpritesProvider = Provider<List<SpriteRegion>>((ref) {
   final multiSpriteState = ref.watch(multiSpriteProvider);
   return multiSpriteState.getSpritesForSource(activeSource.id);
 });
+

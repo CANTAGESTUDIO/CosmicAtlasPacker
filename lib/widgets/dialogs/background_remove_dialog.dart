@@ -49,7 +49,7 @@ class _BackgroundRemoveDialogState extends State<BackgroundRemoveDialog> {
   // Edge options
   bool _antialias = false;
   int _featherRadius = 0;
-  int _alphaThreshold = 10;
+  int _alphaThreshold = 0;
 
   @override
   void initState() {
@@ -405,21 +405,21 @@ class _BackgroundRemoveDialogState extends State<BackgroundRemoveDialog> {
         ),
         const SizedBox(height: 14),
 
-        // Alpha threshold slider
-        _SliderRow(
-          label: '투명도 임계값',
-          value: _alphaThreshold,
-          min: 0,
-          max: 50,
-          onChanged: (value) => setState(() => _alphaThreshold = value),
-        ),
-        const SizedBox(height: 14),
-
         // Antialias toggle
         _ToggleRow(
           label: '안티앨리어싱',
           value: _antialias,
           onChanged: (value) => setState(() => _antialias = value),
+        ),
+        const SizedBox(height: 14),
+
+        // Alpha threshold slider (applied after feathering/antialiasing)
+        _SliderRow(
+          label: '투명도 임계값',
+          value: _alphaThreshold,
+          min: 0,
+          max: 128,
+          onChanged: (value) => setState(() => _alphaThreshold = value),
         ),
       ],
     );
