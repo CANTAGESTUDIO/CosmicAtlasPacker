@@ -492,6 +492,9 @@ class _CheckerboardPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    // Clip to image bounds to prevent checkerboard overflow
+    canvas.clipRect(Rect.fromLTWH(0, 0, size.width, size.height));
+
     for (double y = 0; y < size.height; y += _checkerSize) {
       for (double x = 0; x < size.width; x += _checkerSize) {
         final isLight = ((x ~/ _checkerSize) + (y ~/ _checkerSize)) % 2 == 0;
