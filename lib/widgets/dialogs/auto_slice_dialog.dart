@@ -627,43 +627,18 @@ class _AutoSliceDialogState extends State<AutoSliceDialog> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const _SectionHeader(title: 'Alpha Threshold'),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            SizedBox(
-              width: 80,
-              child: TextField(
-                controller: _thresholdController,
-                decoration: const InputDecoration(
-                  isDense: true,
-                  suffixText: '/ 255',
-                ),
-                keyboardType: TextInputType.number,
-                inputFormatters: [
-                  FilteringTextInputFormatter.digitsOnly,
-                  _RangeTextInputFormatter(0, 255),
-                ],
-                onChanged: (_) {
-                  _validate();
-                  _updatePreview();
-                },
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Slider(
-                value: (int.tryParse(_thresholdController.text) ?? 1).toDouble().clamp(0, 255),
-                min: 0,
-                max: 255,
-                divisions: 255,
-                onChanged: (value) {
-                  _thresholdController.text = value.round().toString();
-                  _validate();
-                  _updatePreview();
-                },
-              ),
-            ),
-          ],
+        const SizedBox(height: 12),
+        _SliderRow(
+          label: 'Threshold',
+          value: int.tryParse(_thresholdController.text) ?? 1,
+          suffix: '/ 255',
+          min: 0,
+          max: 255,
+          onChanged: (value) {
+            _thresholdController.text = value.toString();
+            _validate();
+            _updatePreview();
+          },
         ),
       ],
     );
@@ -717,9 +692,8 @@ class _AutoSliceDialogState extends State<AutoSliceDialog> {
         Row(
           children: [
             Expanded(
-              child: _ConnectivityButton(
+              child: _OptionButton(
                 label: '4-Direction',
-                description: 'Up, Down, Left, Right',
                 isSelected: !_use8Direction,
                 onTap: () {
                   setState(() => _use8Direction = false);
@@ -729,9 +703,8 @@ class _AutoSliceDialogState extends State<AutoSliceDialog> {
             ),
             const SizedBox(width: 8),
             Expanded(
-              child: _ConnectivityButton(
+              child: _OptionButton(
                 label: '8-Direction',
-                description: 'Including diagonals',
                 isSelected: _use8Direction,
                 onTap: () {
                   setState(() => _use8Direction = true);
@@ -903,72 +876,6 @@ class _NumberField extends StatelessWidget {
   }
 }
 
-class _ConnectivityButton extends StatelessWidget {
-  final String label;
-  final String description;
-  final bool isSelected;
-  final VoidCallback onTap;
-
-  const _ConnectivityButton({
-    required this.label,
-    required this.description,
-    required this.isSelected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: isSelected
-              ? EditorColors.primary.withValues(alpha: 0.2)
-              : EditorColors.inputBackground,
-          borderRadius: BorderRadius.circular(4),
-          border: Border.all(
-            color: isSelected ? EditorColors.primary : EditorColors.border,
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  isSelected ? Icons.radio_button_checked : Icons.radio_button_off,
-                  size: 16,
-                  color: isSelected ? EditorColors.primary : EditorColors.iconDisabled,
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                    color: isSelected ? EditorColors.primary : EditorColors.iconDefault,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 4),
-            Padding(
-              padding: const EdgeInsets.only(left: 24),
-              child: Text(
-                description,
-                style: TextStyle(
-                  fontSize: 11,
-                  color: EditorColors.iconDisabled,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
 
 class _ColorButton extends StatelessWidget {
   final Color color;
@@ -1040,7 +947,7 @@ class _RangeTextInputFormatter extends TextInputFormatter {
 }
 
 // ============================================================================
-// Section Header Widget
+// Compact Widgets (Design System Compliant)
 // ============================================================================
 
 class _SectionHeader extends StatelessWidget {
@@ -1056,6 +963,117 @@ class _SectionHeader extends StatelessWidget {
         fontSize: 12,
         color: EditorColors.iconDefault,
         fontWeight: FontWeight.w600,
+      ),
+    );
+  }
+}
+
+class _SliderRow extends StatelessWidget {
+  final String label;
+  final int value;
+  final String? suffix;
+  final int min;
+  final int max;
+  final ValueChanged<int> onChanged;
+
+  const _SliderRow({
+    required this.label,
+    required this.value,
+    this.suffix,
+    required this.min,
+    required this.max,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        SizedBox(
+          width: 100,
+          child: Text(
+            label,
+            style: const TextStyle(fontSize: 11, color: EditorColors.iconDefault),
+          ),
+        ),
+        Expanded(
+          child: SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
+              overlayShape: const RoundSliderOverlayShape(overlayRadius: 10),
+              trackHeight: 2,
+              activeTrackColor: EditorColors.primary,
+              inactiveTrackColor: EditorColors.border,
+              thumbColor: EditorColors.primary,
+            ),
+            child: Slider(
+              value: value.toDouble(),
+              min: min.toDouble(),
+              max: max.toDouble(),
+              divisions: max - min,
+              onChanged: (v) => onChanged(v.round()),
+            ),
+          ),
+        ),
+        SizedBox(
+          width: 50,
+          child: Text(
+            suffix != null ? '$value$suffix' : '$value',
+            textAlign: TextAlign.right,
+            style: const TextStyle(
+              fontSize: 11,
+              fontFamily: 'monospace',
+              color: EditorColors.iconDisabled,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _OptionButton extends StatelessWidget {
+  final String label;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _OptionButton({
+    required this.label,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? EditorColors.primary.withValues(alpha: 0.15)
+              : EditorColors.inputBackground,
+          borderRadius: BorderRadius.circular(4),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              isSelected ? Icons.radio_button_checked : Icons.radio_button_off,
+              size: 14,
+              color: isSelected ? EditorColors.primary : EditorColors.iconDisabled,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                color: isSelected ? EditorColors.primary : EditorColors.iconDefault,
+                fontWeight: isSelected ? FontWeight.w500 : FontWeight.normal,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

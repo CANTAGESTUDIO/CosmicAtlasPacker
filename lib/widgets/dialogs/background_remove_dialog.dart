@@ -227,28 +227,24 @@ class _BackgroundRemoveDialogState extends State<BackgroundRemoveDialog> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const _SectionHeader(title: '감지된 코너 색상'),
-        const SizedBox(height: 8),
-
-        // Corner color buttons + eyedropper button + selected color info
+        // Confirmed background color display
         Row(
           children: [
-            for (int i = 0; i < _cornerColors.length; i++) ...[
-              _ColorButton(
-                color: _cornerColors[i],
-                isSelected: _selectedColor != null &&
-                    _colorsEqual(_selectedColor!, _cornerColors[i]),
-                onTap: () => setState(() => _selectedColor = _cornerColors[i]),
+            const Icon(
+              Icons.check_circle,
+              size: 14,
+              color: EditorColors.primary,
+            ),
+            const SizedBox(width: 6),
+            const Text(
+              '확정 배경색',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: EditorColors.iconDefault,
               ),
-              if (i < _cornerColors.length - 1) const SizedBox(width: 6),
-            ],
-            const SizedBox(width: 8),
-            // Eyedropper button
-            _EyedropperButton(
-              onTap: _showColorPickerDialog,
             ),
             const Spacer(),
-            // Selected color info
             if (_selectedColor != null)
               Row(
                 children: [
@@ -267,11 +263,44 @@ class _BackgroundRemoveDialogState extends State<BackgroundRemoveDialog> {
                     style: const TextStyle(
                       fontSize: 11,
                       fontFamily: 'monospace',
-                      color: EditorColors.iconDisabled,
+                      color: EditorColors.iconDefault,
                     ),
                   ),
                 ],
+              )
+            else
+              const Text(
+                '선택 안됨',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: EditorColors.iconDisabled,
+                ),
               ),
+          ],
+        ),
+        const SizedBox(height: 12),
+
+        // Corner colors section
+        const _SectionHeader(title: '감지된 코너 색상'),
+        const SizedBox(height: 8),
+
+        // Corner color toggle buttons + eyedropper button
+        Row(
+          children: [
+            for (int i = 0; i < _cornerColors.length; i++) ...[
+              _ColorToggleButton(
+                color: _cornerColors[i],
+                isSelected: _selectedColor != null &&
+                    _colorsEqual(_selectedColor!, _cornerColors[i]),
+                onTap: () => setState(() => _selectedColor = _cornerColors[i]),
+              ),
+              if (i < _cornerColors.length - 1) const SizedBox(width: 6),
+            ],
+            const SizedBox(width: 8),
+            // Eyedropper button
+            _EyedropperButton(
+              onTap: _showColorPickerDialog,
+            ),
           ],
         ),
       ],
@@ -476,12 +505,13 @@ class _SectionHeader extends StatelessWidget {
   }
 }
 
-class _ColorButton extends StatelessWidget {
+/// Toggle-style color button that matches the design system
+class _ColorToggleButton extends StatelessWidget {
   final Color color;
   final bool isSelected;
   final VoidCallback onTap;
 
-  const _ColorButton({
+  const _ColorToggleButton({
     required this.color,
     required this.isSelected,
     required this.onTap,
@@ -492,23 +522,25 @@ class _ColorButton extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: 28,
-        height: 28,
+        padding: const EdgeInsets.all(3),
         decoration: BoxDecoration(
-          color: color,
-          borderRadius: BorderRadius.circular(3),
-          border: Border.all(
-            color: isSelected ? EditorColors.primary : Colors.transparent,
-            width: 2,
+          color: isSelected
+              ? EditorColors.primary.withValues(alpha: 0.15)
+              : EditorColors.inputBackground,
+          borderRadius: BorderRadius.circular(4),
+        ),
+        child: Container(
+          width: 22,
+          height: 22,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(2),
+            border: Border.all(
+              color: isSelected ? EditorColors.primary : EditorColors.border,
+              width: isSelected ? 1.5 : 1,
+            ),
           ),
         ),
-        child: isSelected
-            ? Icon(
-                Icons.check,
-                size: 14,
-                color: color.computeLuminance() > 0.5 ? Colors.black : Colors.white,
-              )
-            : null,
       ),
     );
   }
@@ -806,8 +838,8 @@ class _ColorPickerDialogState extends State<_ColorPickerDialog> {
       ),
       backgroundColor: EditorColors.surface,
       child: SizedBox(
-        width: 850, // 2.5x larger
-        height: 520,
+        width: 1275, // 1.5x wider
+        height: 1040, // 2x taller
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,

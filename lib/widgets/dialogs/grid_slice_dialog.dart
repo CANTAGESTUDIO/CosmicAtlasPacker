@@ -280,7 +280,7 @@ class _GridSliceDialogState extends State<GridSliceDialog> {
         Row(
           children: [
             Expanded(
-              child: _ModeButton(
+              child: _OptionButton(
                 label: 'Cell Size',
                 isSelected: _mode == SliceMode.cellSize,
                 onTap: () {
@@ -291,7 +291,7 @@ class _GridSliceDialogState extends State<GridSliceDialog> {
             ),
             const SizedBox(width: 8),
             Expanded(
-              child: _ModeButton(
+              child: _OptionButton(
                 label: 'Cell Count',
                 isSelected: _mode == SliceMode.cellCount,
                 onTap: () {
@@ -423,68 +423,22 @@ class _GridSliceDialogState extends State<GridSliceDialog> {
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                'Cell Padding',
-                style: TextStyle(
-                  fontSize: 11,
-                  color: EditorColors.iconDisabled,
-                ),
+              _SliderRow(
+                label: 'Padding X',
+                value: _paddingX,
+                suffix: 'px',
+                min: 0,
+                max: 32,
+                onChanged: (value) => setState(() => _paddingX = value),
               ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'X (Horizontal)',
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: EditorColors.iconDisabled,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Slider(
-                          value: _paddingX.toDouble(),
-                          min: 0,
-                          max: 32,
-                          divisions: 32,
-                          label: '${_paddingX}px',
-                          onChanged: (value) {
-                            setState(() => _paddingX = value.toInt());
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Y (Vertical)',
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: EditorColors.iconDisabled,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Slider(
-                          value: _paddingY.toDouble(),
-                          min: 0,
-                          max: 32,
-                          divisions: 32,
-                          label: '${_paddingY}px',
-                          onChanged: (value) {
-                            setState(() => _paddingY = value.toInt());
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+              const SizedBox(height: 12),
+              _SliderRow(
+                label: 'Padding Y',
+                value: _paddingY,
+                suffix: 'px',
+                min: 0,
+                max: 32,
+                onChanged: (value) => setState(() => _paddingY = value),
               ),
             ],
           ),
@@ -647,54 +601,6 @@ class _GridSliceDialogState extends State<GridSliceDialog> {
   }
 }
 
-class _ModeButton extends StatelessWidget {
-  final String label;
-  final bool isSelected;
-  final VoidCallback onTap;
-
-  const _ModeButton({
-    required this.label,
-    required this.isSelected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-        decoration: BoxDecoration(
-          color: isSelected
-              ? EditorColors.primary.withValues(alpha: 0.2)
-              : EditorColors.inputBackground,
-          borderRadius: BorderRadius.circular(4),
-          border: Border.all(
-            color: isSelected ? EditorColors.primary : EditorColors.border,
-          ),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              isSelected ? Icons.radio_button_checked : Icons.radio_button_off,
-              size: 16,
-              color: isSelected ? EditorColors.primary : EditorColors.iconDisabled,
-            ),
-            const SizedBox(width: 8),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 13,
-                color: isSelected ? EditorColors.primary : EditorColors.iconDefault,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
 
 class _NumberField extends StatelessWidget {
   final String label;
@@ -770,7 +676,7 @@ class _PreviewItem extends StatelessWidget {
 }
 
 // ============================================================================
-// Section Header Widget
+// Compact Widgets (Design System Compliant)
 // ============================================================================
 
 class _SectionHeader extends StatelessWidget {
@@ -787,6 +693,117 @@ class _SectionHeader extends StatelessWidget {
         color: EditorColors.iconDefault,
         fontWeight: FontWeight.w600,
       ),
+    );
+  }
+}
+
+class _OptionButton extends StatelessWidget {
+  final String label;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _OptionButton({
+    required this.label,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? EditorColors.primary.withValues(alpha: 0.15)
+              : EditorColors.inputBackground,
+          borderRadius: BorderRadius.circular(4),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              isSelected ? Icons.radio_button_checked : Icons.radio_button_off,
+              size: 14,
+              color: isSelected ? EditorColors.primary : EditorColors.iconDisabled,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                color: isSelected ? EditorColors.primary : EditorColors.iconDefault,
+                fontWeight: isSelected ? FontWeight.w500 : FontWeight.normal,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SliderRow extends StatelessWidget {
+  final String label;
+  final int value;
+  final String? suffix;
+  final int min;
+  final int max;
+  final ValueChanged<int> onChanged;
+
+  const _SliderRow({
+    required this.label,
+    required this.value,
+    this.suffix,
+    required this.min,
+    required this.max,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        SizedBox(
+          width: 100,
+          child: Text(
+            label,
+            style: const TextStyle(fontSize: 11, color: EditorColors.iconDefault),
+          ),
+        ),
+        Expanded(
+          child: SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
+              overlayShape: const RoundSliderOverlayShape(overlayRadius: 10),
+              trackHeight: 2,
+              activeTrackColor: EditorColors.primary,
+              inactiveTrackColor: EditorColors.border,
+              thumbColor: EditorColors.primary,
+            ),
+            child: Slider(
+              value: value.toDouble(),
+              min: min.toDouble(),
+              max: max.toDouble(),
+              divisions: max - min,
+              onChanged: (v) => onChanged(v.round()),
+            ),
+          ),
+        ),
+        SizedBox(
+          width: 36,
+          child: Text(
+            suffix != null ? '$value$suffix' : '$value',
+            textAlign: TextAlign.right,
+            style: const TextStyle(
+              fontSize: 11,
+              fontFamily: 'monospace',
+              color: EditorColors.iconDisabled,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
