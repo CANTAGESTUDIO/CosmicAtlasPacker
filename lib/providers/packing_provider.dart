@@ -191,7 +191,8 @@ final _exportServiceProvider = Provider<ExportService>((ref) {
 
 /// Provider for atlas preview image (ui.Image)
 /// Automatically regenerates when atlas sources or sprites change
-/// Uses PROCESSED images (effectiveRawImage) for atlas generation
+/// Uses ORIGINAL images for region mode (sprite extraction from source)
+/// Uses PROCESSED images for separated mode (sprites have their own imageBytes)
 /// Supports both single source and merge mode
 final atlasPreviewImageProvider = FutureProvider.autoDispose<ui.Image?>((ref) async {
   final atlasSources = ref.watch(atlasSourcesProvider);
@@ -216,10 +217,16 @@ final atlasPreviewImageProvider = FutureProvider.autoDispose<ui.Image?>((ref) as
     return null;
   }
 
-  // Build source images map using PROCESSED images (effectiveRawImage)
+  // Build source images map
+  // Use effectiveRawImage to respect background removal and other processing
+  // - If background was removed, processedRawImage is used
+  // - Otherwise, originalRawImage is used as fallback
   final sourceImages = <String, dynamic>{};
   for (final source in atlasSources) {
-    // Use effectiveRawImage: processed if available, otherwise original
+    // Use effectiveRawImage for atlas generation
+    // - This respects background removal from AutoSlice dialog
+    // - Region mode: sprites extracted from processed image using sourceRect
+    // - Separated mode: sprites have imageBytes, so sourceImage is not used
     sourceImages[source.id] = source.effectiveRawImage;
   }
 

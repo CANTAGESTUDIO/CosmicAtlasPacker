@@ -23,6 +23,7 @@ import '../providers/project_provider.dart';
 import '../providers/sprite_provider.dart';
 import '../providers/theme_provider.dart';
 import '../services/auto_slicer_service.dart';
+import '../services/background_remover_service.dart';
 import '../services/grid_slicer_service.dart';
 import '../shortcuts/shortcuts.dart';
 import '../theme/editor_colors.dart';
@@ -769,7 +770,7 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
             await _updateSourceImageWithProcessedForSource(source.id, sliceResult.backgroundCanvas!);
           } else if (dialogResult.removeBackground && dialogResult.bgColorTolerance != null) {
             // Fallback: If no canvas but background removal enabled
-            final processedImage = _removeBackgroundWithTolerance(
+            final processedImage = await _removeBackgroundWithTolerance(
               source.rawImage,
               dialogResult.bgColorTolerance!,
             );
@@ -808,7 +809,7 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
     img.Image imageToUse = source.rawImage;
     if (dialogResult.removeBackground && dialogResult.bgColorTolerance != null) {
       // Apply background removal with same tolerance
-      imageToUse = _removeBackgroundWithTolerance(
+      imageToUse = await _removeBackgroundWithTolerance(
         source.rawImage,
         dialogResult.bgColorTolerance!,
       );
@@ -823,21 +824,29 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
   }
 
   /// Remove background from image using corner pixel color with tolerance
-  img.Image _removeBackgroundWithTolerance(img.Image image, int tolerance) {
+  /// Uses BackgroundRemoverService for proper contiguous flood-fill from edges
+  Future<img.Image> _removeBackgroundWithTolerance(img.Image image, int tolerance) async {
     // Auto-detect background color from corner pixel
-    final bgColor = image.getPixel(0, 0);
+    final bgPixel = image.getPixel(0, 0);
+    final bgColor = Color.fromARGB(
+      255,
+      bgPixel.r.toInt(),
+      bgPixel.g.toInt(),
+      bgPixel.b.toInt(),
+    );
 
-    // Create copy and replace background with transparent
-    final result = img.Image.from(image);
-    for (int y = 0; y < result.height; y++) {
-      for (int x = 0; x < result.width; x++) {
-        final pixel = result.getPixel(x, y);
-        if (_colorMatches(pixel, bgColor, tolerance)) {
-          result.setPixel(x, y, img.ColorRgba8(0, 0, 0, 0));
-        }
-      }
-    }
-    return result;
+    // Use BackgroundRemoverService for proper contiguous removal
+    const bgRemover = BackgroundRemoverService();
+    final result = await bgRemover.removeBackground(
+      image: image,
+      config: BackgroundRemoveConfig(
+        targetColor: bgColor,
+        tolerance: tolerance,
+        contiguousOnly: true, // Only remove connected background from edges
+      ),
+    );
+
+    return result.image;
   }
 
   Future<void> _showBackgroundRemoveDialog() async {
