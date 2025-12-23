@@ -54,6 +54,7 @@ class AutoSliceDialog extends StatefulWidget {
 /// Preset configuration for quick settings
 class _AutoSlicePreset {
   final String name;
+  final String description;
   final int alphaThreshold;
   final int minWidth;
   final int minHeight;
@@ -61,6 +62,7 @@ class _AutoSlicePreset {
 
   const _AutoSlicePreset({
     required this.name,
+    required this.description,
     required this.alphaThreshold,
     required this.minWidth,
     required this.minHeight,
@@ -69,22 +71,21 @@ class _AutoSlicePreset {
 }
 
 class _AutoSliceDialogState extends State<AutoSliceDialog> {
-  final _thresholdController = TextEditingController(text: '1');
-  final _minWidthController = TextEditingController(text: '4');
-  final _minHeightController = TextEditingController(text: '4');
-  final _prefixController = TextEditingController(text: 'sprite');
-  final _toleranceController = TextEditingController(text: '0');
-
+  int _alphaThreshold = 1;
+  int _minWidth = 4;
+  int _minHeight = 4;
+  String _idPrefix = 'sprite';
   bool _use8Direction = false;
   bool _isProcessing = false;
   double _progress = 0.0;
   String _progressMessage = '';
   int? _previewCount;
-  String? _validationError;
+  String? _errorMessage;
 
   // Background removal settings
   bool _removeBackground = false;
   int _bgColorIndex = 0;
+  int _bgTolerance = 0;
   late List<Color> _cornerColors;
   final _bgRemoverService = const BackgroundRemoverService();
 
@@ -100,6 +101,7 @@ class _AutoSliceDialogState extends State<AutoSliceDialog> {
   static final List<_AutoSlicePreset> _presets = [
     const _AutoSlicePreset(
       name: 'Pixel Art',
+      description: '1×1 최소 크기',
       alphaThreshold: 1,
       minWidth: 1,
       minHeight: 1,
@@ -107,6 +109,7 @@ class _AutoSliceDialogState extends State<AutoSliceDialog> {
     ),
     const _AutoSlicePreset(
       name: 'Standard',
+      description: '4×4 최소 크기',
       alphaThreshold: 1,
       minWidth: 4,
       minHeight: 4,
@@ -114,12 +117,15 @@ class _AutoSliceDialogState extends State<AutoSliceDialog> {
     ),
     const _AutoSlicePreset(
       name: 'High Detail',
+      description: '8×8 최소, 8방향',
       alphaThreshold: 128,
       minWidth: 8,
       minHeight: 8,
       use8Direction: true,
     ),
   ];
+
+  int _selectedPresetIndex = 1; // Standard by default
 
   @override
   void initState() {
@@ -139,42 +145,14 @@ class _AutoSliceDialogState extends State<AutoSliceDialog> {
     _updatePreview();
   }
 
-  @override
-  void dispose() {
-    _thresholdController.dispose();
-    _minWidthController.dispose();
-    _minHeightController.dispose();
-    _prefixController.dispose();
-    _toleranceController.dispose();
-    super.dispose();
-  }
-
   AutoSliceConfig _buildConfig() {
     return AutoSliceConfig(
-      alphaThreshold: int.tryParse(_thresholdController.text) ?? 1,
-      minWidth: int.tryParse(_minWidthController.text) ?? 4,
-      minHeight: int.tryParse(_minHeightController.text) ?? 4,
-      idPrefix: _prefixController.text.isEmpty ? 'sprite' : _prefixController.text,
+      alphaThreshold: _alphaThreshold,
+      minWidth: _minWidth,
+      minHeight: _minHeight,
+      idPrefix: _idPrefix.isEmpty ? 'sprite' : _idPrefix,
       use8Direction: _use8Direction,
     );
-  }
-
-  void _validate() {
-    final threshold = int.tryParse(_thresholdController.text);
-    final minWidth = int.tryParse(_minWidthController.text);
-    final minHeight = int.tryParse(_minHeightController.text);
-
-    setState(() {
-      if (threshold == null || threshold < 0 || threshold > 255) {
-        _validationError = 'Alpha threshold must be 0-255';
-      } else if (minWidth == null || minWidth < 1) {
-        _validationError = 'Minimum width must be at least 1';
-      } else if (minHeight == null || minHeight < 1) {
-        _validationError = 'Minimum height must be at least 1';
-      } else {
-        _validationError = null;
-      }
-    });
   }
 
   Future<img.Image> _getProcessedImage() async {
@@ -192,7 +170,7 @@ class _AutoSliceDialogState extends State<AutoSliceDialog> {
       image: widget.image,
       config: BackgroundRemoveConfig(
         targetColor: _backgroundColor!,
-        tolerance: int.tryParse(_toleranceController.text) ?? 0,
+        tolerance: _bgTolerance,
         contiguousOnly: true,
       ),
     );
@@ -206,8 +184,6 @@ class _AutoSliceDialogState extends State<AutoSliceDialog> {
   }
 
   Future<void> _updatePreview() async {
-    if (_validationError != null) return;
-
     final config = _buildConfig();
     try {
       final imageToUse = await _getProcessedImage();
@@ -223,24 +199,24 @@ class _AutoSliceDialogState extends State<AutoSliceDialog> {
     }
   }
 
-  void _applyPreset(_AutoSlicePreset preset) {
+  void _applyPreset(int index) {
+    final preset = _presets[index];
     setState(() {
-      _thresholdController.text = preset.alphaThreshold.toString();
-      _minWidthController.text = preset.minWidth.toString();
-      _minHeightController.text = preset.minHeight.toString();
+      _selectedPresetIndex = index;
+      _alphaThreshold = preset.alphaThreshold;
+      _minWidth = preset.minWidth;
+      _minHeight = preset.minHeight;
       _use8Direction = preset.use8Direction;
     });
-    _validate();
     _updatePreview();
   }
 
   Future<void> _performSlicing() async {
-    if (_validationError != null) return;
-
     setState(() {
       _isProcessing = true;
       _progress = 0.0;
-      _progressMessage = _removeBackground ? '배경 제거 중...' : 'Starting...';
+      _progressMessage = _removeBackground ? '배경 제거 중...' : '시작 중...';
+      _errorMessage = null;
     });
 
     try {
@@ -259,7 +235,6 @@ class _AutoSliceDialogState extends State<AutoSliceDialog> {
         onProgress: (progress, message) {
           if (mounted) {
             setState(() {
-              // Adjust progress to account for background removal phase
               _progress = 0.1 + progress * 0.9;
               _progressMessage = message;
             });
@@ -268,21 +243,19 @@ class _AutoSliceDialogState extends State<AutoSliceDialog> {
       );
 
       if (mounted) {
-        final config = _buildConfig();
-        final tolerance = int.tryParse(_toleranceController.text) ?? 0;
         Navigator.of(context).pop(AutoSliceDialogResult(
           sliceResult: result,
-          config: config,
+          config: _buildConfig(),
           processedImage: _removeBackground ? _processedImage : null,
           removeBackground: _removeBackground,
-          bgColorTolerance: _removeBackground ? tolerance : null,
+          bgColorTolerance: _removeBackground ? _bgTolerance : null,
         ));
       }
     } catch (e) {
       if (mounted) {
         setState(() {
           _isProcessing = false;
-          _validationError = 'Processing failed: $e';
+          _errorMessage = '처리 실패: $e';
         });
       }
     }
@@ -290,79 +263,100 @@ class _AutoSliceDialogState extends State<AutoSliceDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return Dialog(
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(4),
-      ),
-      backgroundColor: EditorColors.surface,
-      child: SizedBox(
-        width: 420,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Header
-            _buildHeader(),
+    return Shortcuts(
+      shortcuts: const {
+        SingleActivator(LogicalKeyboardKey.enter): _ApplyIntent(),
+        SingleActivator(LogicalKeyboardKey.escape): _CancelIntent(),
+      },
+      child: Actions(
+        actions: <Type, Action<Intent>>{
+          _ApplyIntent: CallbackAction<_ApplyIntent>(
+            onInvoke: (_) {
+              if (!_isProcessing && _previewCount != null && _previewCount! > 0) {
+                _performSlicing();
+              }
+              return null;
+            },
+          ),
+          _CancelIntent: CallbackAction<_CancelIntent>(
+            onInvoke: (_) => Navigator.of(context).pop(),
+          ),
+        },
+        child: Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(4),
+          ),
+          backgroundColor: EditorColors.surface,
+          child: SizedBox(
+            width: 500,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Header
+                _buildHeader(),
 
-            // Content
-            Flexible(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Quick presets
-                    _buildPresetsSection(),
-                    const SizedBox(height: 16),
+                // Content
+                Flexible(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(24, 20, 24, 10),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Current settings display
+                        _buildCurrentSettingsSection(),
+                        const SizedBox(height: 20),
 
-                    // Background removal option
-                    _buildBackgroundRemovalSection(),
-                    const SizedBox(height: 16),
+                        // Quick presets
+                        _buildPresetsSection(),
+                        const SizedBox(height: 20),
 
-                    // Alpha threshold
-                    _buildThresholdSection(),
-                    const SizedBox(height: 16),
+                        // Alpha threshold
+                        _buildThresholdSection(),
+                        const SizedBox(height: 20),
 
-                    // Minimum size
-                    _buildMinSizeSection(),
-                    const SizedBox(height: 16),
+                        // Minimum size
+                        _buildMinSizeSection(),
+                        const SizedBox(height: 20),
 
-                    // Connectivity
-                    _buildConnectivitySection(),
-                    const SizedBox(height: 16),
+                        // Connectivity mode
+                        _buildConnectivitySection(),
+                        const SizedBox(height: 20),
 
-                    // ID prefix
-                    _buildPrefixSection(),
-                    const SizedBox(height: 16),
+                        // Background removal
+                        _buildBackgroundRemovalSection(),
+                        const SizedBox(height: 20),
 
-                    // Preview
-                    _buildPreviewSection(),
+                        // Advanced options
+                        _buildAdvancedOptionsSection(),
 
-                    // Progress
-                    if (_isProcessing) ...[
-                      const SizedBox(height: 16),
-                      _buildProgressSection(),
-                    ],
+                        // Progress
+                        if (_isProcessing) ...[
+                          const SizedBox(height: 20),
+                          _buildProgressSection(),
+                        ],
 
-                    // Validation error
-                    if (_validationError != null && !_isProcessing) ...[
-                      const SizedBox(height: 12),
-                      Text(
-                        _validationError!,
-                        style: const TextStyle(
-                          color: EditorColors.error,
-                          fontSize: 11,
-                        ),
-                      ),
-                    ],
-                  ],
+                        // Error message
+                        if (_errorMessage != null && !_isProcessing) ...[
+                          const SizedBox(height: 14),
+                          Text(
+                            _errorMessage!,
+                            style: const TextStyle(
+                              color: EditorColors.error,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
                 ),
-              ),
-            ),
 
-            // Actions
-            _buildActions(),
-          ],
+                // Actions
+                _buildActions(),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -371,7 +365,7 @@ class _AutoSliceDialogState extends State<AutoSliceDialog> {
   Widget _buildHeader() {
     return Container(
       height: 48,
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 20),
       decoration: const BoxDecoration(
         color: EditorColors.panelBackground,
         borderRadius: BorderRadius.vertical(top: Radius.circular(4)),
@@ -379,9 +373,9 @@ class _AutoSliceDialogState extends State<AutoSliceDialog> {
       child: Row(
         children: [
           const Text(
-            'Auto Slice',
+            '오토 슬라이스',
             style: TextStyle(
-              fontSize: 14,
+              fontSize: 16,
               fontWeight: FontWeight.w600,
               color: EditorColors.iconDefault,
             ),
@@ -390,7 +384,7 @@ class _AutoSliceDialogState extends State<AutoSliceDialog> {
           Text(
             '${widget.image.width} × ${widget.image.height}',
             style: const TextStyle(
-              fontSize: 11,
+              fontSize: 13,
               color: EditorColors.iconDisabled,
             ),
           ),
@@ -399,47 +393,52 @@ class _AutoSliceDialogState extends State<AutoSliceDialog> {
     );
   }
 
-  Widget _buildActions() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.end,
-        children: [
-          TextButton(
-            onPressed: _isProcessing ? null : () => Navigator.of(context).pop(),
-            style: TextButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              minimumSize: const Size(0, 32),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(4),
+  Widget _buildCurrentSettingsSection() {
+    return Row(
+      children: [
+        const Icon(
+          Icons.auto_awesome,
+          size: 16,
+          color: EditorColors.primary,
+        ),
+        const SizedBox(width: 8),
+        const Text(
+          '예상 스프라이트 수',
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: EditorColors.iconDefault,
+          ),
+        ),
+        const Spacer(),
+        if (_previewCount != null)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(
+              color: _previewCount == 0
+                  ? EditorColors.warning.withValues(alpha: 0.15)
+                  : EditorColors.primary.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Text(
+              _previewCount == 0 ? '감지 안됨' : '$_previewCount 개',
+              style: TextStyle(
+                fontSize: 13,
+                fontFamily: 'monospace',
+                fontWeight: FontWeight.w500,
+                color: _previewCount == 0 ? EditorColors.warning : EditorColors.primary,
               ),
             ),
-            child: const Text('Cancel'),
-          ),
-          const SizedBox(width: 8),
-          FilledButton(
-            onPressed: _isProcessing || _validationError != null || _previewCount == 0
-                ? null
-                : _performSlicing,
-            style: FilledButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              minimumSize: const Size(0, 32),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(4),
-              ),
+          )
+        else
+          const Text(
+            '계산 중...',
+            style: TextStyle(
+              fontSize: 13,
+              color: EditorColors.iconDisabled,
             ),
-            child: _isProcessing
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : Text(_previewCount != null
-                    ? 'Apply ($_previewCount sprites)'
-                    : 'Apply'),
           ),
-        ],
-      ),
+      ],
     );
   }
 
@@ -447,178 +446,24 @@ class _AutoSliceDialogState extends State<AutoSliceDialog> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const _SectionHeader(title: 'Quick Presets'),
-        const SizedBox(height: 8),
+        const _SectionHeader(title: '빠른 프리셋'),
+        const SizedBox(height: 10),
         Row(
           children: [
             for (int i = 0; i < _presets.length; i++) ...[
               Expanded(
-                child: GestureDetector(
-                  onTap: () => _applyPreset(_presets[i]),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
-                    decoration: BoxDecoration(
-                      color: EditorColors.inputBackground,
-                      borderRadius: BorderRadius.circular(4),
-                      border: Border.all(color: EditorColors.border),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        Text(
-                          _presets[i].name,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                            height: 1.4,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          '${_presets[i].minWidth}×${_presets[i].minHeight}',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: EditorColors.iconDisabled,
-                            fontFamily: 'monospace',
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                child: _PresetButton(
+                  name: _presets[i].name,
+                  description: _presets[i].description,
+                  isSelected: _selectedPresetIndex == i,
+                  onTap: () => _applyPreset(i),
                 ),
               ),
-              if (i < _presets.length - 1) const SizedBox(width: 8),
-            ]
+              if (i < _presets.length - 1) const SizedBox(width: 10),
+            ],
           ],
         ),
       ],
-    );
-  }
-
-  Widget _buildBackgroundRemovalSection() {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: _removeBackground
-            ? EditorColors.primary.withValues(alpha: 0.1)
-            : EditorColors.panelBackground,
-        borderRadius: BorderRadius.circular(4),
-        border: Border.all(
-          color: _removeBackground ? EditorColors.primary : EditorColors.border,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Checkbox(
-                value: _removeBackground,
-                onChanged: (value) {
-                  setState(() {
-                    _removeBackground = value ?? false;
-                    _invalidateProcessedImage();
-                  });
-                  _updatePreview();
-                },
-              ),
-              const SizedBox(width: 4),
-              const Expanded(
-                child: Text(
-                  '배경색 자동 제거',
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
-                ),
-              ),
-            ],
-          ),
-          if (_removeBackground) ...[
-            const SizedBox(height: 8),
-            Text(
-              '배경색을 투명으로 변환한 후 스프라이트를 감지합니다',
-              style: TextStyle(
-                fontSize: 11,
-                color: EditorColors.iconDisabled,
-              ),
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Text(
-                  _cornerColors.length > 1 ? '배경색 선택: ' : '감지된 배경색: ',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: EditorColors.iconDisabled,
-                  ),
-                ),
-                // Show color selection only if multiple unique colors detected
-                if (_cornerColors.length > 1)
-                  for (int i = 0; i < _cornerColors.length; i++)
-                    _ColorButton(
-                      color: _cornerColors[i],
-                      isSelected: _bgColorIndex == i,
-                      onTap: () {
-                        setState(() {
-                          _bgColorIndex = i;
-                          _invalidateProcessedImage();
-                        });
-                        _updatePreview();
-                      },
-                    ),
-                if (_backgroundColor != null) ...[
-                  // Show color swatch when only one color
-                  if (_cornerColors.length == 1)
-                    Container(
-                      width: 24,
-                      height: 24,
-                      margin: const EdgeInsets.only(right: 8),
-                      decoration: BoxDecoration(
-                        color: _backgroundColor,
-                        borderRadius: BorderRadius.circular(3),
-                        border: Border.all(color: EditorColors.border),
-                      ),
-                    ),
-                  if (_cornerColors.length > 1) const SizedBox(width: 8),
-                  Text(
-                    'RGB(${_backgroundColor!.red.toInt()}, ${_backgroundColor!.green.toInt()}, ${_backgroundColor!.blue.toInt()})',
-                    style: const TextStyle(fontSize: 10, fontFamily: 'monospace'),
-                  ),
-                ],
-              ],
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Text(
-                  '허용 오차: ',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: EditorColors.iconDisabled,
-                  ),
-                ),
-                SizedBox(
-                  width: 50,
-                  child: TextField(
-                    controller: _toleranceController,
-                    decoration: const InputDecoration(
-                      isDense: true,
-                      contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                    ),
-                    style: const TextStyle(fontSize: 12),
-                    keyboardType: TextInputType.number,
-                    inputFormatters: [
-                      FilteringTextInputFormatter.digitsOnly,
-                    ],
-                    onChanged: (_) {
-                      _invalidateProcessedImage();
-                      _updatePreview();
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ],
-      ),
     );
   }
 
@@ -626,19 +471,33 @@ class _AutoSliceDialogState extends State<AutoSliceDialog> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const _SectionHeader(title: 'Alpha Threshold'),
-        const SizedBox(height: 12),
-        _SliderRow(
-          label: 'Threshold',
-          value: int.tryParse(_thresholdController.text) ?? 1,
-          suffix: '/ 255',
-          min: 0,
-          max: 255,
-          onChanged: (value) {
-            _thresholdController.text = value.toString();
-            _validate();
-            _updatePreview();
-          },
+        Row(
+          children: [
+            const _SectionHeader(title: '알파 임계값'),
+            const Spacer(),
+            Text(
+              '$_alphaThreshold',
+              style: const TextStyle(
+                fontSize: 13,
+                fontFamily: 'monospace',
+                color: EditorColors.iconDefault,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        SliderTheme(
+          data: _sliderTheme(context),
+          child: Slider(
+            value: _alphaThreshold.toDouble(),
+            min: 0,
+            max: 255,
+            divisions: 51,
+            onChanged: (value) {
+              setState(() => _alphaThreshold = value.round());
+              _updatePreview();
+            },
+          ),
         ),
       ],
     );
@@ -648,36 +507,30 @@ class _AutoSliceDialogState extends State<AutoSliceDialog> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const _SectionHeader(title: 'Minimum Sprite Size'),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(
-              child: _NumberField(
-                label: 'Width',
-                controller: _minWidthController,
-                suffix: 'px',
-                onChanged: (_) {
-                  _validate();
-                  _updatePreview();
-                },
-              ),
-            ),
-            const SizedBox(width: 16),
-            const Text('x'),
-            const SizedBox(width: 16),
-            Expanded(
-              child: _NumberField(
-                label: 'Height',
-                controller: _minHeightController,
-                suffix: 'px',
-                onChanged: (_) {
-                  _validate();
-                  _updatePreview();
-                },
-              ),
-            ),
-          ],
+        const _SectionHeader(title: '최소 스프라이트 크기'),
+        const SizedBox(height: 14),
+        _SliderRow(
+          label: '최소 너비',
+          value: _minWidth,
+          suffix: 'px',
+          min: 1,
+          max: 64,
+          onChanged: (value) {
+            setState(() => _minWidth = value);
+            _updatePreview();
+          },
+        ),
+        const SizedBox(height: 14),
+        _SliderRow(
+          label: '최소 높이',
+          value: _minHeight,
+          suffix: 'px',
+          min: 1,
+          max: 64,
+          onChanged: (value) {
+            setState(() => _minHeight = value);
+            _updatePreview();
+          },
         ),
       ],
     );
@@ -687,13 +540,13 @@ class _AutoSliceDialogState extends State<AutoSliceDialog> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const _SectionHeader(title: 'Pixel Connectivity'),
-        const SizedBox(height: 8),
+        const _SectionHeader(title: '픽셀 연결 모드'),
+        const SizedBox(height: 10),
         Row(
           children: [
             Expanded(
               child: _OptionButton(
-                label: '4-Direction',
+                label: '4방향',
                 isSelected: !_use8Direction,
                 onTap: () {
                   setState(() => _use8Direction = false);
@@ -701,10 +554,10 @@ class _AutoSliceDialogState extends State<AutoSliceDialog> {
                 },
               ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 10),
             Expanded(
               child: _OptionButton(
-                label: '8-Direction',
+                label: '8방향',
                 isSelected: _use8Direction,
                 onTap: () {
                   setState(() => _use8Direction = true);
@@ -718,86 +571,88 @@ class _AutoSliceDialogState extends State<AutoSliceDialog> {
     );
   }
 
-  Widget _buildPrefixSection() {
+  Widget _buildBackgroundRemovalSection() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const _SectionHeader(title: 'ID Prefix'),
-        const SizedBox(height: 8),
-        TextField(
-          controller: _prefixController,
-          decoration: const InputDecoration(
-            hintText: 'sprite',
-            isDense: true,
-          ),
-          onChanged: (_) => setState(() {}),
+        const _SectionHeader(title: '배경색 제거'),
+        const SizedBox(height: 14),
+        _ToggleRow(
+          label: '배경색 자동 제거',
+          value: _removeBackground,
+          onChanged: (value) {
+            setState(() {
+              _removeBackground = value;
+              _invalidateProcessedImage();
+            });
+            _updatePreview();
+          },
         ),
+        if (_removeBackground) ...[
+          const SizedBox(height: 14),
+          // Color selection
+          Row(
+            children: [
+              const SizedBox(
+                width: 120,
+                child: Text(
+                  '배경색',
+                  style: TextStyle(fontSize: 13, color: EditorColors.iconDefault),
+                ),
+              ),
+              for (int i = 0; i < _cornerColors.length; i++) ...[
+                _ColorToggleButton(
+                  color: _cornerColors[i],
+                  isSelected: _bgColorIndex == i,
+                  onTap: () {
+                    setState(() {
+                      _bgColorIndex = i;
+                      _invalidateProcessedImage();
+                    });
+                    _updatePreview();
+                  },
+                ),
+                if (i < _cornerColors.length - 1) const SizedBox(width: 8),
+              ],
+            ],
+          ),
+          const SizedBox(height: 14),
+          // Tolerance slider
+          _SliderRow(
+            label: '허용 오차',
+            value: _bgTolerance,
+            min: 0,
+            max: 50,
+            onChanged: (value) {
+              setState(() {
+                _bgTolerance = value;
+                _invalidateProcessedImage();
+              });
+              _updatePreview();
+            },
+          ),
+        ],
       ],
     );
   }
 
-  Widget _buildPreviewSection() {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: EditorColors.panelBackground,
-        borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: EditorColors.border),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            Icons.auto_awesome,
-            size: 20,
-            color: EditorColors.primary,
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Detected Regions',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                    height: 1.3,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  _previewCount != null
-                      ? _previewCount == 0
-                          ? 'No regions detected'
-                          : '$_previewCount sprites will be created'
-                      : 'Calculating...',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: _previewCount == 0 ? EditorColors.warning : EditorColors.iconDisabled,
-                    height: 1.4,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          if (_previewCount == 0)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: EditorColors.warning.withValues(alpha: 0.2),
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Text(
-                '⚠ No regions',
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w500,
-                  color: EditorColors.warning,
-                ),
-              ),
-            ),
-        ],
-      ),
+  Widget _buildAdvancedOptionsSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const _SectionHeader(title: 'ID 접두사'),
+        const SizedBox(height: 10),
+        _EditorTextField(
+          initialValue: _idPrefix,
+          hintText: 'sprite',
+          onChanged: (value) {
+            _idPrefix = value;
+          },
+          inputFormatters: [
+            FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9_]')),
+          ],
+        ),
+      ],
     );
   }
 
@@ -808,146 +663,108 @@ class _AutoSliceDialogState extends State<AutoSliceDialog> {
         Row(
           children: [
             Expanded(
-              child: LinearProgressIndicator(
-                value: _progress,
-                backgroundColor: EditorColors.border,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(2),
+                child: LinearProgressIndicator(
+                  value: _progress,
+                  backgroundColor: EditorColors.border,
+                  minHeight: 4,
+                ),
               ),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 14),
             Text(
               '${(_progress * 100).round()}%',
-              style: const TextStyle(fontSize: 12),
+              style: const TextStyle(
+                fontSize: 13,
+                fontFamily: 'monospace',
+                color: EditorColors.iconDefault,
+              ),
             ),
           ],
         ),
         const SizedBox(height: 4),
         Text(
           _progressMessage,
-          style: TextStyle(
-            fontSize: 11,
+          style: const TextStyle(
+            fontSize: 13,
             color: EditorColors.iconDisabled,
           ),
         ),
       ],
     );
   }
-}
 
-class _NumberField extends StatelessWidget {
-  final String label;
-  final TextEditingController controller;
-  final String? suffix;
-  final ValueChanged<String>? onChanged;
-
-  const _NumberField({
-    required this.label,
-    required this.controller,
-    this.suffix,
-    this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 11,
-            color: EditorColors.iconDisabled,
+  Widget _buildActions() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 14, 24, 20),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          TextButton(
+            onPressed: _isProcessing ? null : () => Navigator.of(context).pop(),
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              minimumSize: const Size(0, 38),
+              textStyle: const TextStyle(fontSize: 13),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(4),
+              ),
+            ),
+            child: const Text('취소'),
           ),
-        ),
-        const SizedBox(height: 4),
-        TextField(
-          controller: controller,
-          decoration: InputDecoration(
-            isDense: true,
-            suffixText: suffix,
+          const SizedBox(width: 10),
+          FilledButton(
+            onPressed: _isProcessing || _previewCount == null || _previewCount == 0
+                ? null
+                : _performSlicing,
+            style: FilledButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              minimumSize: const Size(0, 38),
+              textStyle: const TextStyle(fontSize: 13),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(4),
+              ),
+            ),
+            child: _isProcessing
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Text('적용'),
           ),
-          keyboardType: TextInputType.number,
-          inputFormatters: [
-            FilteringTextInputFormatter.digitsOnly,
-          ],
-          onChanged: onChanged,
-        ),
-      ],
-    );
-  }
-}
-
-
-class _ColorButton extends StatelessWidget {
-  final Color color;
-  final bool isSelected;
-  final VoidCallback onTap;
-
-  const _ColorButton({
-    required this.color,
-    required this.isSelected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 24,
-        height: 24,
-        margin: const EdgeInsets.only(right: 4),
-        decoration: BoxDecoration(
-          color: color,
-          borderRadius: BorderRadius.circular(3),
-          border: Border.all(
-            color: isSelected ? EditorColors.primary : EditorColors.border,
-            width: isSelected ? 2 : 1,
-          ),
-        ),
-        child: isSelected
-            ? Icon(
-                Icons.check,
-                size: 14,
-                color: _contrastColor(color),
-              )
-            : null,
+        ],
       ),
     );
   }
 
-  Color _contrastColor(Color color) {
-    final luminance = color.computeLuminance();
-    return luminance > 0.5 ? Colors.black : Colors.white;
-  }
-}
-
-/// Input formatter that limits values to a range
-class _RangeTextInputFormatter extends TextInputFormatter {
-  final int min;
-  final int max;
-
-  _RangeTextInputFormatter(this.min, this.max);
-
-  @override
-  TextEditingValue formatEditUpdate(
-    TextEditingValue oldValue,
-    TextEditingValue newValue,
-  ) {
-    if (newValue.text.isEmpty) return newValue;
-
-    final value = int.tryParse(newValue.text);
-    if (value == null) return oldValue;
-
-    if (value < min || value > max) {
-      return oldValue;
-    }
-
-    return newValue;
+  SliderThemeData _sliderTheme(BuildContext context) {
+    return SliderTheme.of(context).copyWith(
+      thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+      overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+      trackHeight: 2,
+      activeTrackColor: EditorColors.primary,
+      inactiveTrackColor: EditorColors.border,
+      thumbColor: EditorColors.primary,
+    );
   }
 }
 
 // ============================================================================
-// Compact Widgets (Design System Compliant)
+// Intent classes for keyboard shortcuts
+// ============================================================================
+
+class _ApplyIntent extends Intent {
+  const _ApplyIntent();
+}
+
+class _CancelIntent extends Intent {
+  const _CancelIntent();
+}
+
+// ============================================================================
+// Compact Widgets (Design System Compliant - matching background_remove_dialog)
 // ============================================================================
 
 class _SectionHeader extends StatelessWidget {
@@ -960,9 +777,111 @@ class _SectionHeader extends StatelessWidget {
     return Text(
       title,
       style: const TextStyle(
-        fontSize: 12,
+        fontSize: 14,
         color: EditorColors.iconDefault,
         fontWeight: FontWeight.w600,
+      ),
+    );
+  }
+}
+
+class _PresetButton extends StatelessWidget {
+  final String name;
+  final String description;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _PresetButton({
+    required this.name,
+    required this.description,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? EditorColors.primary.withValues(alpha: 0.15)
+              : EditorColors.inputBackground,
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(
+            color: isSelected ? EditorColors.primary : EditorColors.border,
+          ),
+        ),
+        child: Column(
+          children: [
+            Text(
+              name,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                color: isSelected ? EditorColors.primary : EditorColors.iconDefault,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              description,
+              style: TextStyle(
+                fontSize: 11,
+                color: isSelected
+                    ? EditorColors.primary.withValues(alpha: 0.8)
+                    : EditorColors.iconDisabled,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _OptionButton extends StatelessWidget {
+  final String label;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _OptionButton({
+    required this.label,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? EditorColors.primary.withValues(alpha: 0.15)
+              : EditorColors.inputBackground,
+          borderRadius: BorderRadius.circular(4),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              isSelected ? Icons.radio_button_checked : Icons.radio_button_off,
+              size: 16,
+              color: isSelected ? EditorColors.primary : EditorColors.iconDisabled,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 13,
+                color: isSelected ? EditorColors.primary : EditorColors.iconDefault,
+                fontWeight: isSelected ? FontWeight.w500 : FontWeight.normal,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -990,17 +909,17 @@ class _SliderRow extends StatelessWidget {
     return Row(
       children: [
         SizedBox(
-          width: 100,
+          width: 120,
           child: Text(
             label,
-            style: const TextStyle(fontSize: 11, color: EditorColors.iconDefault),
+            style: const TextStyle(fontSize: 13, color: EditorColors.iconDefault),
           ),
         ),
         Expanded(
           child: SliderTheme(
             data: SliderTheme.of(context).copyWith(
-              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
-              overlayShape: const RoundSliderOverlayShape(overlayRadius: 10),
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+              overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
               trackHeight: 2,
               activeTrackColor: EditorColors.primary,
               inactiveTrackColor: EditorColors.border,
@@ -1016,12 +935,12 @@ class _SliderRow extends StatelessWidget {
           ),
         ),
         SizedBox(
-          width: 50,
+          width: 44,
           child: Text(
             suffix != null ? '$value$suffix' : '$value',
             textAlign: TextAlign.right,
             style: const TextStyle(
-              fontSize: 11,
+              fontSize: 13,
               fontFamily: 'monospace',
               color: EditorColors.iconDisabled,
             ),
@@ -1032,13 +951,58 @@ class _SliderRow extends StatelessWidget {
   }
 }
 
-class _OptionButton extends StatelessWidget {
+class _ToggleRow extends StatelessWidget {
   final String label;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  const _ToggleRow({
+    required this.label,
+    required this.value,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            label,
+            style: const TextStyle(fontSize: 13, color: EditorColors.iconDefault),
+          ),
+        ),
+        SizedBox(
+          width: 36,
+          height: 24,
+          child: FittedBox(
+            fit: BoxFit.contain,
+            alignment: Alignment.centerRight,
+            child: Switch(
+              value: value,
+              onChanged: onChanged,
+              activeColor: EditorColors.primary,
+              activeTrackColor: EditorColors.primary.withValues(alpha: 0.5),
+              inactiveThumbColor: EditorColors.iconDisabled,
+              inactiveTrackColor: EditorColors.border,
+              trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              splashRadius: 0,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ColorToggleButton extends StatelessWidget {
+  final Color color;
   final bool isSelected;
   final VoidCallback onTap;
 
-  const _OptionButton({
-    required this.label,
+  const _ColorToggleButton({
+    required this.color,
     required this.isSelected,
     required this.onTap,
   });
@@ -1048,32 +1012,117 @@ class _OptionButton extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        padding: const EdgeInsets.all(4),
         decoration: BoxDecoration(
           color: isSelected
               ? EditorColors.primary.withValues(alpha: 0.15)
               : EditorColors.inputBackground,
           borderRadius: BorderRadius.circular(4),
         ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              isSelected ? Icons.radio_button_checked : Icons.radio_button_off,
-              size: 14,
-              color: isSelected ? EditorColors.primary : EditorColors.iconDisabled,
+        child: Container(
+          width: 26,
+          height: 26,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(2),
+            border: Border.all(
+              color: isSelected ? EditorColors.primary : EditorColors.border,
+              width: isSelected ? 2 : 1,
             ),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 11,
-                color: isSelected ? EditorColors.primary : EditorColors.iconDefault,
-                fontWeight: isSelected ? FontWeight.w500 : FontWeight.normal,
-              ),
-            ),
-          ],
+          ),
         ),
+      ),
+    );
+  }
+}
+
+/// Editor TextField - Design System Compliant
+/// Prevents keyboard shortcut conflicts with Focus wrapper
+class _EditorTextField extends StatefulWidget {
+  final String? initialValue;
+  final String? hintText;
+  final ValueChanged<String>? onChanged;
+  final ValueChanged<String>? onSubmitted;
+  final List<TextInputFormatter>? inputFormatters;
+  final TextInputType? keyboardType;
+  final bool hasError;
+
+  const _EditorTextField({
+    this.initialValue,
+    this.hintText,
+    this.onChanged,
+    this.onSubmitted,
+    this.inputFormatters,
+    this.keyboardType,
+    this.hasError = false,
+  });
+
+  @override
+  State<_EditorTextField> createState() => _EditorTextFieldState();
+}
+
+class _EditorTextFieldState extends State<_EditorTextField> {
+  late TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialValue);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Focus(
+      // Prevent keyboard shortcuts from intercepting input
+      onKeyEvent: (node, event) => KeyEventResult.skipRemainingHandlers,
+      child: TextField(
+        controller: _controller,
+        style: const TextStyle(
+          fontSize: 13,
+          color: EditorColors.iconDefault,
+        ),
+        decoration: InputDecoration(
+          isDense: true,
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 10,
+            vertical: 10,
+          ),
+          filled: true,
+          fillColor: EditorColors.inputBackground,
+          hintText: widget.hintText,
+          hintStyle: TextStyle(
+            fontSize: 13,
+            color: EditorColors.iconDisabled.withValues(alpha: 0.7),
+          ),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(4),
+            borderSide: BorderSide(
+              color: widget.hasError ? EditorColors.error : EditorColors.border,
+            ),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(4),
+            borderSide: BorderSide(
+              color: widget.hasError ? EditorColors.error : EditorColors.border,
+            ),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(4),
+            borderSide: BorderSide(
+              color: widget.hasError ? EditorColors.error : EditorColors.primary,
+            ),
+          ),
+        ),
+        keyboardType: widget.keyboardType,
+        inputFormatters: widget.inputFormatters,
+        onChanged: widget.onChanged,
+        onSubmitted: widget.onSubmitted,
       ),
     );
   }

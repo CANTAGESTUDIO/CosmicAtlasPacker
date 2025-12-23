@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'dart:ui' as ui;
 
 import '../../models/enums/slice_mode.dart';
 import '../../services/grid_slicer_service.dart';
@@ -28,6 +27,7 @@ class GridSliceDialog extends StatefulWidget {
   }) async {
     return showDialog<GridSliceConfig>(
       context: context,
+      barrierDismissible: false,
       builder: (context) => GridSliceDialog(
         imageWidth: imageWidth,
         imageHeight: imageHeight,
@@ -43,17 +43,17 @@ class _GridSliceDialogState extends State<GridSliceDialog> {
   SliceMode _mode = SliceMode.cellSize;
 
   // Cell Size mode
-  final _cellWidthController = TextEditingController(text: '64');
-  final _cellHeightController = TextEditingController(text: '64');
+  int _cellWidth = 64;
+  int _cellHeight = 64;
 
   // Cell Count mode
-  final _columnsController = TextEditingController(text: '4');
-  final _rowsController = TextEditingController(text: '4');
+  int _columns = 4;
+  int _rows = 4;
 
   // Common
-  final _offsetXController = TextEditingController(text: '0');
-  final _offsetYController = TextEditingController(text: '0');
-  final _prefixController = TextEditingController(text: 'sprite');
+  int _offsetX = 0;
+  int _offsetY = 0;
+  String _idPrefix = 'sprite';
 
   // Advanced options
   int _paddingX = 0;
@@ -64,30 +64,14 @@ class _GridSliceDialogState extends State<GridSliceDialog> {
 
   String? _validationError;
 
-  @override
-  void dispose() {
-    _cellWidthController.dispose();
-    _cellHeightController.dispose();
-    _columnsController.dispose();
-    _rowsController.dispose();
-    _offsetXController.dispose();
-    _offsetYController.dispose();
-    _prefixController.dispose();
-    super.dispose();
-  }
-
   GridSliceConfig _buildConfig() {
     return GridSliceConfig(
       mode: _mode,
-      primaryValue: _mode == SliceMode.cellSize
-          ? int.tryParse(_cellWidthController.text) ?? 64
-          : int.tryParse(_columnsController.text) ?? 4,
-      secondaryValue: _mode == SliceMode.cellSize
-          ? int.tryParse(_cellHeightController.text) ?? 64
-          : int.tryParse(_rowsController.text) ?? 4,
-      offsetX: int.tryParse(_offsetXController.text) ?? 0,
-      offsetY: int.tryParse(_offsetYController.text) ?? 0,
-      idPrefix: _prefixController.text.isEmpty ? 'sprite' : _prefixController.text,
+      primaryValue: _mode == SliceMode.cellSize ? _cellWidth : _columns,
+      secondaryValue: _mode == SliceMode.cellSize ? _cellHeight : _rows,
+      offsetX: _offsetX,
+      offsetY: _offsetY,
+      idPrefix: _idPrefix.isEmpty ? 'sprite' : _idPrefix,
     );
   }
 
@@ -134,70 +118,93 @@ class _GridSliceDialogState extends State<GridSliceDialog> {
   Widget build(BuildContext context) {
     final preview = _getPreview();
 
-    return Dialog(
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(4),
-      ),
-      backgroundColor: EditorColors.surface,
-      child: SizedBox(
-        width: 400,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Header
-            _buildHeader(),
+    return Shortcuts(
+      shortcuts: const {
+        SingleActivator(LogicalKeyboardKey.enter): _ApplyIntent(),
+        SingleActivator(LogicalKeyboardKey.escape): _CancelIntent(),
+      },
+      child: Actions(
+        actions: <Type, Action<Intent>>{
+          _ApplyIntent: CallbackAction<_ApplyIntent>(
+            onInvoke: (_) {
+              if (_validationError == null && preview.total > 0) {
+                Navigator.of(context).pop(_buildConfig());
+              }
+              return null;
+            },
+          ),
+          _CancelIntent: CallbackAction<_CancelIntent>(
+            onInvoke: (_) => Navigator.of(context).pop(),
+          ),
+        },
+        child: Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(4),
+          ),
+          backgroundColor: EditorColors.surface,
+          child: SizedBox(
+            width: 500,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Header
+                _buildHeader(),
 
-            // Content
-            Flexible(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Mode selection
-                    _buildModeSelector(),
-                    const SizedBox(height: 16),
+                // Content
+                Flexible(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(24, 20, 24, 10),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Preview info display
+                        _buildPreviewInfoSection(preview),
+                        const SizedBox(height: 20),
 
-                    // Mode-specific inputs
-                    if (_mode == SliceMode.cellSize) _buildCellSizeInputs(),
-                    if (_mode == SliceMode.cellCount) _buildCellCountInputs(),
-                    const SizedBox(height: 16),
+                        // Mode selection
+                        _buildModeSection(),
+                        const SizedBox(height: 20),
 
-                    // Offset inputs
-                    _buildOffsetInputs(),
-                    const SizedBox(height: 16),
+                        // Mode-specific inputs
+                        if (_mode == SliceMode.cellSize)
+                          _buildCellSizeSection()
+                        else
+                          _buildCellCountSection(),
+                        const SizedBox(height: 20),
 
-                    // ID prefix
-                    _buildPrefixInput(),
-                    const SizedBox(height: 16),
+                        // Offset
+                        _buildOffsetSection(),
+                        const SizedBox(height: 20),
 
-                    // Advanced options
-                    _buildAdvancedOptions(),
-                    const SizedBox(height: 16),
+                        // Advanced options
+                        _buildAdvancedOptionsSection(),
+                        const SizedBox(height: 20),
 
-                    // Preview
-                    _buildPreview(preview),
+                        // ID Prefix
+                        _buildPrefixSection(),
 
-                    // Validation error
-                    if (_validationError != null) ...[
-                      const SizedBox(height: 12),
-                      Text(
-                        _validationError!,
-                        style: const TextStyle(
-                          color: EditorColors.error,
-                          fontSize: 11,
-                        ),
-                      ),
-                    ],
-                  ],
+                        // Validation error
+                        if (_validationError != null) ...[
+                          const SizedBox(height: 14),
+                          Text(
+                            _validationError!,
+                            style: const TextStyle(
+                              color: EditorColors.error,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
                 ),
-              ),
-            ),
 
-            // Actions
-            _buildActions(),
-          ],
+                // Actions
+                _buildActions(preview),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -206,7 +213,7 @@ class _GridSliceDialogState extends State<GridSliceDialog> {
   Widget _buildHeader() {
     return Container(
       height: 48,
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 20),
       decoration: const BoxDecoration(
         color: EditorColors.panelBackground,
         borderRadius: BorderRadius.vertical(top: Radius.circular(4)),
@@ -214,9 +221,9 @@ class _GridSliceDialogState extends State<GridSliceDialog> {
       child: Row(
         children: [
           const Text(
-            'Grid Slice',
+            '그리드 슬라이스',
             style: TextStyle(
-              fontSize: 14,
+              fontSize: 16,
               fontWeight: FontWeight.w600,
               color: EditorColors.iconDefault,
             ),
@@ -225,7 +232,7 @@ class _GridSliceDialogState extends State<GridSliceDialog> {
           Text(
             '${widget.imageWidth} × ${widget.imageHeight}',
             style: const TextStyle(
-              fontSize: 11,
+              fontSize: 13,
               color: EditorColors.iconDisabled,
             ),
           ),
@@ -234,54 +241,74 @@ class _GridSliceDialogState extends State<GridSliceDialog> {
     );
   }
 
-  Widget _buildActions() {
-    final preview = _getPreview();
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.end,
-        children: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            style: TextButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              minimumSize: const Size(0, 32),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(4),
-              ),
-            ),
-            child: const Text('Cancel'),
+  Widget _buildPreviewInfoSection(
+      ({int columns, int rows, int cellWidth, int cellHeight, int total}) preview) {
+    return Row(
+      children: [
+        const Icon(
+          Icons.grid_on,
+          size: 16,
+          color: EditorColors.primary,
+        ),
+        const SizedBox(width: 8),
+        const Text(
+          '그리드 결과',
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: EditorColors.iconDefault,
           ),
-          const SizedBox(width: 8),
-          FilledButton(
-            onPressed: _validationError == null && preview.total > 0
-                ? () => Navigator.of(context).pop(_buildConfig())
-                : null,
-            style: FilledButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              minimumSize: const Size(0, 32),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(4),
-              ),
-            ),
-            child: Text('Apply (${preview.total} sprites)'),
+        ),
+        const Spacer(),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          decoration: BoxDecoration(
+            color: preview.total == 0
+                ? EditorColors.warning.withValues(alpha: 0.15)
+                : EditorColors.primary.withValues(alpha: 0.15),
+            borderRadius: BorderRadius.circular(4),
           ),
-        ],
-      ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                '${preview.columns}×${preview.rows}',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontFamily: 'monospace',
+                  fontWeight: FontWeight.w500,
+                  color: preview.total == 0 ? EditorColors.warning : EditorColors.primary,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                '${preview.total}개',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontFamily: 'monospace',
+                  color: preview.total == 0
+                      ? EditorColors.warning.withValues(alpha: 0.8)
+                      : EditorColors.primary.withValues(alpha: 0.8),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
-  Widget _buildModeSelector() {
+  Widget _buildModeSection() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const _SectionHeader(title: 'Slice Mode'),
-        const SizedBox(height: 8),
+        const _SectionHeader(title: '슬라이스 모드'),
+        const SizedBox(height: 10),
         Row(
           children: [
             Expanded(
               child: _OptionButton(
-                label: 'Cell Size',
+                label: '셀 크기 지정',
                 isSelected: _mode == SliceMode.cellSize,
                 onTap: () {
                   setState(() => _mode = SliceMode.cellSize);
@@ -289,10 +316,10 @@ class _GridSliceDialogState extends State<GridSliceDialog> {
                 },
               ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 10),
             Expanded(
               child: _OptionButton(
-                label: 'Cell Count',
+                label: '셀 개수 지정',
                 isSelected: _mode == SliceMode.cellCount,
                 onTap: () {
                   setState(() => _mode = SliceMode.cellCount);
@@ -306,377 +333,265 @@ class _GridSliceDialogState extends State<GridSliceDialog> {
     );
   }
 
-  Widget _buildCellSizeInputs() {
-    return Row(
-      children: [
-        Expanded(
-          child: _NumberField(
-            label: 'Cell Width',
-            controller: _cellWidthController,
-            suffix: 'px',
-            onChanged: (_) => _validate(),
-          ),
-        ),
-        const SizedBox(width: 16),
-        const Text('×'),
-        const SizedBox(width: 16),
-        Expanded(
-          child: _NumberField(
-            label: 'Cell Height',
-            controller: _cellHeightController,
-            suffix: 'px',
-            onChanged: (_) => _validate(),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildCellCountInputs() {
-    return Row(
-      children: [
-        Expanded(
-          child: _NumberField(
-            label: 'Columns',
-            controller: _columnsController,
-            onChanged: (_) => _validate(),
-          ),
-        ),
-        const SizedBox(width: 16),
-        const Text('×'),
-        const SizedBox(width: 16),
-        Expanded(
-          child: _NumberField(
-            label: 'Rows',
-            controller: _rowsController,
-            onChanged: (_) => _validate(),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildOffsetInputs() {
+  Widget _buildCellSizeSection() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const _SectionHeader(title: 'Offset (Optional)'),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(
-              child: _NumberField(
-                label: 'X',
-                controller: _offsetXController,
-                suffix: 'px',
-                onChanged: (_) => _validate(),
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: _NumberField(
-                label: 'Y',
-                controller: _offsetYController,
-                suffix: 'px',
-                onChanged: (_) => _validate(),
-              ),
-            ),
-          ],
+        const _SectionHeader(title: '셀 크기'),
+        const SizedBox(height: 14),
+        _SliderRow(
+          label: '셀 너비',
+          value: _cellWidth,
+          suffix: 'px',
+          min: 1,
+          max: widget.imageWidth,
+          onChanged: (value) {
+            setState(() => _cellWidth = value);
+            _validate();
+          },
+        ),
+        const SizedBox(height: 14),
+        _SliderRow(
+          label: '셀 높이',
+          value: _cellHeight,
+          suffix: 'px',
+          min: 1,
+          max: widget.imageHeight,
+          onChanged: (value) {
+            setState(() => _cellHeight = value);
+            _validate();
+          },
         ),
       ],
     );
   }
 
-  Widget _buildPrefixInput() {
+  Widget _buildCellCountSection() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const _SectionHeader(title: 'ID Prefix'),
-        const SizedBox(height: 8),
-        TextField(
-          controller: _prefixController,
-          decoration: const InputDecoration(
-            hintText: 'sprite',
-            isDense: true,
-          ),
-          onChanged: (_) => setState(() {}),
+        const _SectionHeader(title: '셀 개수'),
+        const SizedBox(height: 14),
+        _SliderRow(
+          label: '열 개수',
+          value: _columns,
+          min: 1,
+          max: 32,
+          onChanged: (value) {
+            setState(() => _columns = value);
+            _validate();
+          },
+        ),
+        const SizedBox(height: 14),
+        _SliderRow(
+          label: '행 개수',
+          value: _rows,
+          min: 1,
+          max: 32,
+          onChanged: (value) {
+            setState(() => _rows = value);
+            _validate();
+          },
         ),
       ],
     );
   }
 
-  Widget _buildAdvancedOptions() {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: EditorColors.panelBackground,
-        borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: EditorColors.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const _SectionHeader(title: 'Advanced Options'),
-          const SizedBox(height: 12),
-
-          // Cell Padding
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _SliderRow(
-                label: 'Padding X',
-                value: _paddingX,
-                suffix: 'px',
-                min: 0,
-                max: 32,
-                onChanged: (value) => setState(() => _paddingX = value),
-              ),
-              const SizedBox(height: 12),
-              _SliderRow(
-                label: 'Padding Y',
-                value: _paddingY,
-                suffix: 'px',
-                min: 0,
-                max: 32,
-                onChanged: (value) => setState(() => _paddingY = value),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 12),
-
-          // Grid visualization options
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Grid Visualization',
-                style: TextStyle(
-                  fontSize: 11,
-                  color: EditorColors.iconDisabled,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: Row(
-                      children: [
-                        Checkbox(
-                          value: _showGridLines,
-                          onChanged: (value) {
-                            setState(() => _showGridLines = value ?? true);
-                          },
-                        ),
-                        const SizedBox(width: 4),
-                        const Text(
-                          'Show Grid Lines',
-                          style: TextStyle(fontSize: 12),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Expanded(
-                    child: Row(
-                      children: [
-                        Checkbox(
-                          value: _showCellNumbers,
-                          onChanged: (value) {
-                            setState(() => _showCellNumbers = value ?? false);
-                          },
-                        ),
-                        const SizedBox(width: 4),
-                        const Text(
-                          'Show Cell Numbers',
-                          style: TextStyle(fontSize: 12),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-
-          // Number format (only shown when cell numbers enabled)
-          if (_showCellNumbers) ...[
-            const SizedBox(height: 12),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Number Format',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: EditorColors.iconDisabled,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    for (final format in ['001', '01', '1'])
-                      Expanded(
-                        child: GestureDetector(
-                          onTap: () {
-                            setState(() => _numberFormat = format);
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              vertical: 8,
-                              horizontal: 12,
-                            ),
-                            decoration: BoxDecoration(
-                              color: _numberFormat == format
-                                  ? EditorColors.primary.withValues(alpha: 0.2)
-                                  : EditorColors.inputBackground,
-                              borderRadius: BorderRadius.circular(4),
-                              border: Border.all(
-                                color: _numberFormat == format
-                                    ? EditorColors.primary
-                                    : EditorColors.border,
-                              ),
-                            ),
-                            child: Center(
-                              child: Text(
-                                format,
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w500,
-                                  color: _numberFormat == format
-                                      ? EditorColors.primary
-                                      : EditorColors.iconDefault,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                  ].expand((w) => [w, const SizedBox(width: 8)]).toList()
-                    ..removeLast(),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Example: sprite_${_getFormattedNumber(1)}',
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: EditorColors.iconDisabled,
-                    fontFamily: 'monospace',
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ],
-      ),
+  Widget _buildOffsetSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const _SectionHeader(title: '오프셋'),
+        const SizedBox(height: 14),
+        _SliderRow(
+          label: 'X 오프셋',
+          value: _offsetX,
+          suffix: 'px',
+          min: 0,
+          max: 64,
+          onChanged: (value) {
+            setState(() => _offsetX = value);
+            _validate();
+          },
+        ),
+        const SizedBox(height: 14),
+        _SliderRow(
+          label: 'Y 오프셋',
+          value: _offsetY,
+          suffix: 'px',
+          min: 0,
+          max: 64,
+          onChanged: (value) {
+            setState(() => _offsetY = value);
+            _validate();
+          },
+        ),
+      ],
     );
   }
 
-  Widget _buildPreview(
-      ({int columns, int rows, int cellWidth, int cellHeight, int total}) preview) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: EditorColors.panelBackground,
-        borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: EditorColors.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const _SectionHeader(title: 'Preview'),
-          const SizedBox(height: 8),
+  Widget _buildAdvancedOptionsSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const _SectionHeader(title: '고급 옵션'),
+        const SizedBox(height: 14),
+
+        // Padding
+        _SliderRow(
+          label: 'X 패딩',
+          value: _paddingX,
+          suffix: 'px',
+          min: 0,
+          max: 32,
+          onChanged: (value) => setState(() => _paddingX = value),
+        ),
+        const SizedBox(height: 14),
+        _SliderRow(
+          label: 'Y 패딩',
+          value: _paddingY,
+          suffix: 'px',
+          min: 0,
+          max: 32,
+          onChanged: (value) => setState(() => _paddingY = value),
+        ),
+        const SizedBox(height: 14),
+
+        // Grid visualization toggles
+        _ToggleRow(
+          label: '그리드 라인 표시',
+          value: _showGridLines,
+          onChanged: (value) => setState(() => _showGridLines = value),
+        ),
+        const SizedBox(height: 14),
+        _ToggleRow(
+          label: '셀 번호 표시',
+          value: _showCellNumbers,
+          onChanged: (value) => setState(() => _showCellNumbers = value),
+        ),
+
+        // Number format (only shown when cell numbers enabled)
+        if (_showCellNumbers) ...[
+          const SizedBox(height: 14),
           Row(
             children: [
-              _PreviewItem(label: 'Grid', value: '${preview.columns} × ${preview.rows}'),
-              const SizedBox(width: 16),
-              _PreviewItem(
-                  label: 'Cell Size', value: '${preview.cellWidth} × ${preview.cellHeight} px'),
-              const SizedBox(width: 16),
-              _PreviewItem(label: 'Total', value: '${preview.total} sprites'),
+              const SizedBox(
+                width: 120,
+                child: Text(
+                  '번호 형식',
+                  style: TextStyle(fontSize: 13, color: EditorColors.iconDefault),
+                ),
+              ),
+              Expanded(
+                child: Row(
+                  children: [
+                    for (final format in ['001', '01', '1']) ...[
+                      Expanded(
+                        child: _FormatButton(
+                          format: format,
+                          isSelected: _numberFormat == format,
+                          onTap: () => setState(() => _numberFormat = format),
+                        ),
+                      ),
+                      if (format != '1') const SizedBox(width: 8),
+                    ],
+                  ],
+                ),
+              ),
             ],
+          ),
+          const SizedBox(height: 10),
+          Padding(
+            padding: const EdgeInsets.only(left: 120),
+            child: Text(
+              '예: ${_idPrefix}_${_getFormattedNumber(1)}',
+              style: const TextStyle(
+                fontSize: 12,
+                color: EditorColors.iconDisabled,
+                fontFamily: 'monospace',
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildPrefixSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const _SectionHeader(title: 'ID 접두사'),
+        const SizedBox(height: 10),
+        _EditorTextField(
+          initialValue: _idPrefix,
+          hintText: 'sprite',
+          onChanged: (value) {
+            _idPrefix = value;
+            setState(() {});
+          },
+          inputFormatters: [
+            FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9_]')),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildActions(
+      ({int columns, int rows, int cellWidth, int cellHeight, int total}) preview) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 14, 24, 20),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              minimumSize: const Size(0, 38),
+              textStyle: const TextStyle(fontSize: 13),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(4),
+              ),
+            ),
+            child: const Text('취소'),
+          ),
+          const SizedBox(width: 10),
+          FilledButton(
+            onPressed: _validationError == null && preview.total > 0
+                ? () => Navigator.of(context).pop(_buildConfig())
+                : null,
+            style: FilledButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              minimumSize: const Size(0, 38),
+              textStyle: const TextStyle(fontSize: 13),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(4),
+              ),
+            ),
+            child: const Text('적용'),
           ),
         ],
       ),
-    );
-  }
-}
-
-
-class _NumberField extends StatelessWidget {
-  final String label;
-  final TextEditingController controller;
-  final String? suffix;
-  final ValueChanged<String>? onChanged;
-
-  const _NumberField({
-    required this.label,
-    required this.controller,
-    this.suffix,
-    this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 11,
-            color: EditorColors.iconDisabled,
-          ),
-        ),
-        const SizedBox(height: 4),
-        TextField(
-          controller: controller,
-          decoration: InputDecoration(
-            isDense: true,
-            suffixText: suffix,
-          ),
-          keyboardType: TextInputType.number,
-          inputFormatters: [
-            FilteringTextInputFormatter.digitsOnly,
-          ],
-          onChanged: onChanged,
-        ),
-      ],
-    );
-  }
-}
-
-class _PreviewItem extends StatelessWidget {
-  final String label;
-  final String value;
-
-  const _PreviewItem({
-    required this.label,
-    required this.value,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 10,
-            color: EditorColors.iconDisabled,
-          ),
-        ),
-        Text(
-          value,
-          style: const TextStyle(fontSize: 12),
-        ),
-      ],
     );
   }
 }
 
 // ============================================================================
-// Compact Widgets (Design System Compliant)
+// Intent classes for keyboard shortcuts
+// ============================================================================
+
+class _ApplyIntent extends Intent {
+  const _ApplyIntent();
+}
+
+class _CancelIntent extends Intent {
+  const _CancelIntent();
+}
+
+// ============================================================================
+// Compact Widgets (Design System Compliant - matching background_remove_dialog)
 // ============================================================================
 
 class _SectionHeader extends StatelessWidget {
@@ -689,7 +604,7 @@ class _SectionHeader extends StatelessWidget {
     return Text(
       title,
       style: const TextStyle(
-        fontSize: 12,
+        fontSize: 14,
         color: EditorColors.iconDefault,
         fontWeight: FontWeight.w600,
       ),
@@ -713,7 +628,7 @@ class _OptionButton extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
           color: isSelected
               ? EditorColors.primary.withValues(alpha: 0.15)
@@ -725,14 +640,14 @@ class _OptionButton extends StatelessWidget {
           children: [
             Icon(
               isSelected ? Icons.radio_button_checked : Icons.radio_button_off,
-              size: 14,
+              size: 16,
               color: isSelected ? EditorColors.primary : EditorColors.iconDisabled,
             ),
-            const SizedBox(width: 6),
+            const SizedBox(width: 8),
             Text(
               label,
               style: TextStyle(
-                fontSize: 11,
+                fontSize: 13,
                 color: isSelected ? EditorColors.primary : EditorColors.iconDefault,
                 fontWeight: isSelected ? FontWeight.w500 : FontWeight.normal,
               ),
@@ -766,38 +681,38 @@ class _SliderRow extends StatelessWidget {
     return Row(
       children: [
         SizedBox(
-          width: 100,
+          width: 120,
           child: Text(
             label,
-            style: const TextStyle(fontSize: 11, color: EditorColors.iconDefault),
+            style: const TextStyle(fontSize: 13, color: EditorColors.iconDefault),
           ),
         ),
         Expanded(
           child: SliderTheme(
             data: SliderTheme.of(context).copyWith(
-              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
-              overlayShape: const RoundSliderOverlayShape(overlayRadius: 10),
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+              overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
               trackHeight: 2,
               activeTrackColor: EditorColors.primary,
               inactiveTrackColor: EditorColors.border,
               thumbColor: EditorColors.primary,
             ),
             child: Slider(
-              value: value.toDouble(),
+              value: value.toDouble().clamp(min.toDouble(), max.toDouble()),
               min: min.toDouble(),
               max: max.toDouble(),
-              divisions: max - min,
+              divisions: max - min > 0 ? max - min : 1,
               onChanged: (v) => onChanged(v.round()),
             ),
           ),
         ),
         SizedBox(
-          width: 36,
+          width: 44,
           child: Text(
             suffix != null ? '$value$suffix' : '$value',
             textAlign: TextAlign.right,
             style: const TextStyle(
-              fontSize: 11,
+              fontSize: 13,
               fontFamily: 'monospace',
               color: EditorColors.iconDisabled,
             ),
@@ -808,134 +723,181 @@ class _SliderRow extends StatelessWidget {
   }
 }
 
-/// Grid preview overlay painter for visualizing grid lines
-class _GridPreviewPainter extends CustomPainter {
-  final int imageWidth;
-  final int imageHeight;
-  final int columns;
-  final int rows;
-  final int cellWidth;
-  final int cellHeight;
-  final int offsetX;
-  final int offsetY;
-  final int paddingX;
-  final int paddingY;
-  final bool showGridLines;
-  final bool showCellNumbers;
-  final String numberFormat;
-  final String idPrefix;
-  final int? hoveredCell;
+class _ToggleRow extends StatelessWidget {
+  final String label;
+  final bool value;
+  final ValueChanged<bool> onChanged;
 
-  _GridPreviewPainter({
-    required this.imageWidth,
-    required this.imageHeight,
-    required this.columns,
-    required this.rows,
-    required this.cellWidth,
-    required this.cellHeight,
-    required this.offsetX,
-    required this.offsetY,
-    required this.paddingX,
-    required this.paddingY,
-    required this.showGridLines,
-    required this.showCellNumbers,
-    required this.numberFormat,
-    required this.idPrefix,
-    this.hoveredCell,
+  const _ToggleRow({
+    required this.label,
+    required this.value,
+    required this.onChanged,
   });
 
   @override
-  void paint(Canvas canvas, Size size) {
-    if (!showGridLines && !showCellNumbers) return;
-
-    final paint = ui.Paint()
-      ..color = EditorColors.primary.withValues(alpha: 0.6)
-      ..strokeWidth = 1.0;
-
-    final textPaint = TextPainter(
-      textDirection: TextDirection.ltr,
-    );
-
-    // Draw grid lines
-    if (showGridLines) {
-      // Vertical lines
-      for (int col = 0; col <= columns; col++) {
-        final x = offsetX + col * (cellWidth + paddingX * 2);
-        if (x >= 0 && x <= imageWidth) {
-          canvas.drawLine(
-            Offset(x.toDouble(), 0),
-            Offset(x.toDouble(), imageHeight.toDouble()),
-            paint,
-          );
-        }
-      }
-
-      // Horizontal lines
-      for (int row = 0; row <= rows; row++) {
-        final y = offsetY + row * (cellHeight + paddingY * 2);
-        if (y >= 0 && y <= imageHeight) {
-          canvas.drawLine(
-            Offset(0, y.toDouble()),
-            Offset(imageWidth.toDouble(), y.toDouble()),
-            paint,
-          );
-        }
-      }
-    }
-
-    // Draw cell numbers
-    if (showCellNumbers) {
-      int cellNumber = 1;
-      for (int row = 0; row < rows; row++) {
-        for (int col = 0; col < columns; col++) {
-          final cellX = offsetX + col * (cellWidth + paddingX * 2) + paddingX;
-          final cellY = offsetY + row * (cellHeight + paddingY * 2) + paddingY;
-
-          final formattedNumber = _formatNumber(cellNumber);
-          final cellLabel = '$idPrefix\_$formattedNumber';
-
-          textPaint.text = TextSpan(
-            text: cellLabel,
-            style: const TextStyle(
-              color: ui.Color.fromARGB(200, 100, 200, 255),
-              fontSize: 9,
-              fontFamily: 'monospace',
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            label,
+            style: const TextStyle(fontSize: 13, color: EditorColors.iconDefault),
+          ),
+        ),
+        SizedBox(
+          width: 36,
+          height: 24,
+          child: FittedBox(
+            fit: BoxFit.contain,
+            alignment: Alignment.centerRight,
+            child: Switch(
+              value: value,
+              onChanged: onChanged,
+              activeColor: EditorColors.primary,
+              activeTrackColor: EditorColors.primary.withValues(alpha: 0.5),
+              inactiveThumbColor: EditorColors.iconDisabled,
+              inactiveTrackColor: EditorColors.border,
+              trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              splashRadius: 0,
             ),
-          );
-          textPaint.layout();
-
-          if (cellX + textPaint.width < imageWidth &&
-              cellY + textPaint.height < imageHeight) {
-            textPaint.paint(
-              canvas,
-              Offset(cellX.toDouble() + 2, cellY.toDouble() + 2),
-            );
-          }
-
-          cellNumber++;
-        }
-      }
-    }
+          ),
+        ),
+      ],
+    );
   }
+}
 
-  String _formatNumber(int number) {
-    if (numberFormat == '001') {
-      return number.toString().padLeft(3, '0');
-    } else if (numberFormat == '01') {
-      return number.toString().padLeft(2, '0');
-    } else {
-      return number.toString();
-    }
+class _FormatButton extends StatelessWidget {
+  final String format;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _FormatButton({
+    required this.format,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? EditorColors.primary.withValues(alpha: 0.15)
+              : EditorColors.inputBackground,
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(
+            color: isSelected ? EditorColors.primary : EditorColors.border,
+          ),
+        ),
+        child: Center(
+          child: Text(
+            format,
+            style: TextStyle(
+              fontSize: 12,
+              fontFamily: 'monospace',
+              fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+              color: isSelected ? EditorColors.primary : EditorColors.iconDefault,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Editor TextField - Design System Compliant
+/// Prevents keyboard shortcut conflicts with Focus wrapper
+class _EditorTextField extends StatefulWidget {
+  final String? initialValue;
+  final String? hintText;
+  final ValueChanged<String>? onChanged;
+  final ValueChanged<String>? onSubmitted;
+  final List<TextInputFormatter>? inputFormatters;
+  final TextInputType? keyboardType;
+  final bool hasError;
+
+  const _EditorTextField({
+    this.initialValue,
+    this.hintText,
+    this.onChanged,
+    this.onSubmitted,
+    this.inputFormatters,
+    this.keyboardType,
+    this.hasError = false,
+  });
+
+  @override
+  State<_EditorTextField> createState() => _EditorTextFieldState();
+}
+
+class _EditorTextFieldState extends State<_EditorTextField> {
+  late TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialValue);
   }
 
   @override
-  bool shouldRepaint(_GridPreviewPainter oldDelegate) {
-    return oldDelegate.columns != columns ||
-        oldDelegate.rows != rows ||
-        oldDelegate.offsetX != offsetX ||
-        oldDelegate.offsetY != offsetY ||
-        oldDelegate.showGridLines != showGridLines ||
-        oldDelegate.showCellNumbers != showCellNumbers ||
-        oldDelegate.hoveredCell != hoveredCell;
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Focus(
+      // Prevent keyboard shortcuts from intercepting input
+      onKeyEvent: (node, event) => KeyEventResult.skipRemainingHandlers,
+      child: TextField(
+        controller: _controller,
+        style: const TextStyle(
+          fontSize: 13,
+          color: EditorColors.iconDefault,
+        ),
+        decoration: InputDecoration(
+          isDense: true,
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 10,
+            vertical: 10,
+          ),
+          filled: true,
+          fillColor: EditorColors.inputBackground,
+          hintText: widget.hintText,
+          hintStyle: TextStyle(
+            fontSize: 13,
+            color: EditorColors.iconDisabled.withValues(alpha: 0.7),
+          ),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(4),
+            borderSide: BorderSide(
+              color: widget.hasError ? EditorColors.error : EditorColors.border,
+            ),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(4),
+            borderSide: BorderSide(
+              color: widget.hasError ? EditorColors.error : EditorColors.border,
+            ),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(4),
+            borderSide: BorderSide(
+              color: widget.hasError ? EditorColors.error : EditorColors.primary,
+            ),
+          ),
+        ),
+        keyboardType: widget.keyboardType,
+        inputFormatters: widget.inputFormatters,
+        onChanged: widget.onChanged,
+        onSubmitted: widget.onSubmitted,
+      ),
+    );
   }
 }

@@ -136,7 +136,7 @@ class _BackgroundRemoveDialogState extends State<BackgroundRemoveDialog> {
           ),
           backgroundColor: EditorColors.surface,
           child: SizedBox(
-            width: 380,
+            width: 500,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -147,33 +147,33 @@ class _BackgroundRemoveDialogState extends State<BackgroundRemoveDialog> {
                 // Content
                 Flexible(
                   child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                    padding: const EdgeInsets.fromLTRB(24, 20, 24, 10),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         // Color selection with eyedropper button
                         _buildColorSection(),
-                        const SizedBox(height: 16),
+                        const SizedBox(height: 20),
 
                         // Tolerance
                         _buildToleranceSection(),
-                        const SizedBox(height: 16),
+                        const SizedBox(height: 20),
 
                         // Mode selection
                         _buildModeSection(),
-                        const SizedBox(height: 16),
+                        const SizedBox(height: 20),
 
                         // Edge options
                         _buildEdgeOptionsSection(),
 
                         // Error message
                         if (_errorMessage != null) ...[
-                          const SizedBox(height: 12),
+                          const SizedBox(height: 14),
                           Text(
                             _errorMessage!,
                             style: const TextStyle(
                               color: EditorColors.error,
-                              fontSize: 11,
+                              fontSize: 13,
                             ),
                           ),
                         ],
@@ -195,7 +195,7 @@ class _BackgroundRemoveDialogState extends State<BackgroundRemoveDialog> {
   Widget _buildHeader() {
     return Container(
       height: 48,
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 20),
       decoration: const BoxDecoration(
         color: EditorColors.panelBackground,
         borderRadius: BorderRadius.vertical(top: Radius.circular(4)),
@@ -205,7 +205,7 @@ class _BackgroundRemoveDialogState extends State<BackgroundRemoveDialog> {
           const Text(
             '배경색 제거',
             style: TextStyle(
-              fontSize: 14,
+              fontSize: 16,
               fontWeight: FontWeight.w600,
               color: EditorColors.iconDefault,
             ),
@@ -214,7 +214,7 @@ class _BackgroundRemoveDialogState extends State<BackgroundRemoveDialog> {
           Text(
             '${widget.image.width} × ${widget.image.height}',
             style: const TextStyle(
-              fontSize: 11,
+              fontSize: 13,
               color: EditorColors.iconDisabled,
             ),
           ),
@@ -232,14 +232,14 @@ class _BackgroundRemoveDialogState extends State<BackgroundRemoveDialog> {
           children: [
             const Icon(
               Icons.check_circle,
-              size: 14,
+              size: 16,
               color: EditorColors.primary,
             ),
-            const SizedBox(width: 6),
+            const SizedBox(width: 8),
             const Text(
               '확정 배경색',
               style: TextStyle(
-                fontSize: 12,
+                fontSize: 14,
                 fontWeight: FontWeight.w600,
                 color: EditorColors.iconDefault,
               ),
@@ -249,19 +249,19 @@ class _BackgroundRemoveDialogState extends State<BackgroundRemoveDialog> {
               Row(
                 children: [
                   Container(
-                    width: 20,
-                    height: 20,
+                    width: 24,
+                    height: 24,
                     decoration: BoxDecoration(
                       color: _selectedColor,
-                      borderRadius: BorderRadius.circular(2),
+                      borderRadius: BorderRadius.circular(3),
                       border: Border.all(color: EditorColors.border),
                     ),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 10),
                   Text(
                     _colorToHex(_selectedColor!),
                     style: const TextStyle(
-                      fontSize: 11,
+                      fontSize: 13,
                       fontFamily: 'monospace',
                       color: EditorColors.iconDefault,
                     ),
@@ -272,17 +272,17 @@ class _BackgroundRemoveDialogState extends State<BackgroundRemoveDialog> {
               const Text(
                 '선택 안됨',
                 style: TextStyle(
-                  fontSize: 11,
+                  fontSize: 13,
                   color: EditorColors.iconDisabled,
                 ),
               ),
           ],
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 14),
 
         // Corner colors section
         const _SectionHeader(title: '감지된 코너 색상'),
-        const SizedBox(height: 8),
+        const SizedBox(height: 10),
 
         // Corner color toggle buttons + eyedropper button
         Row(
@@ -294,9 +294,9 @@ class _BackgroundRemoveDialogState extends State<BackgroundRemoveDialog> {
                     _colorsEqual(_selectedColor!, _cornerColors[i]),
                 onTap: () => setState(() => _selectedColor = _cornerColors[i]),
               ),
-              if (i < _cornerColors.length - 1) const SizedBox(width: 6),
+              if (i < _cornerColors.length - 1) const SizedBox(width: 8),
             ],
-            const SizedBox(width: 8),
+            const SizedBox(width: 10),
             // Eyedropper button
             _EyedropperButton(
               onTap: _showColorPickerDialog,
@@ -342,14 +342,14 @@ class _BackgroundRemoveDialogState extends State<BackgroundRemoveDialog> {
             Text(
               '$_tolerance',
               style: const TextStyle(
-                fontSize: 11,
+                fontSize: 13,
                 fontFamily: 'monospace',
                 color: EditorColors.iconDefault,
               ),
             ),
           ],
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 10),
         SliderTheme(
           data: _sliderTheme(context),
           child: Slider(
@@ -369,7 +369,7 @@ class _BackgroundRemoveDialogState extends State<BackgroundRemoveDialog> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const _SectionHeader(title: '제거 모드'),
-        const SizedBox(height: 8),
+        const SizedBox(height: 10),
         Row(
           children: [
             Expanded(
@@ -379,7 +379,7 @@ class _BackgroundRemoveDialogState extends State<BackgroundRemoveDialog> {
                 onTap: () => setState(() => _contiguousOnly = true),
               ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 10),
             Expanded(
               child: _OptionButton(
                 label: '모든 일치 색상',
@@ -398,7 +398,7 @@ class _BackgroundRemoveDialogState extends State<BackgroundRemoveDialog> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const _SectionHeader(title: '가장자리 옵션'),
-        const SizedBox(height: 12),
+        const SizedBox(height: 14),
 
         // Feather radius slider
         _SliderRow(
@@ -409,7 +409,7 @@ class _BackgroundRemoveDialogState extends State<BackgroundRemoveDialog> {
           max: 50,
           onChanged: (value) => setState(() => _featherRadius = value),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 14),
 
         // Alpha threshold slider
         _SliderRow(
@@ -419,7 +419,7 @@ class _BackgroundRemoveDialogState extends State<BackgroundRemoveDialog> {
           max: 50,
           onChanged: (value) => setState(() => _alphaThreshold = value),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 14),
 
         // Antialias toggle
         _ToggleRow(
@@ -433,35 +433,37 @@ class _BackgroundRemoveDialogState extends State<BackgroundRemoveDialog> {
 
   Widget _buildActions() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+      padding: const EdgeInsets.fromLTRB(24, 14, 24, 20),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
           TextButton(
             onPressed: _isProcessing ? null : () => Navigator.of(context).pop(),
             style: TextButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              minimumSize: const Size(0, 32),
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              minimumSize: const Size(0, 38),
+              textStyle: const TextStyle(fontSize: 13),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(4),
               ),
             ),
             child: const Text('취소'),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 10),
           FilledButton(
             onPressed: _isProcessing || _selectedColor == null ? null : _applyRemoval,
             style: FilledButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              minimumSize: const Size(0, 32),
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              minimumSize: const Size(0, 38),
+              textStyle: const TextStyle(fontSize: 13),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(4),
               ),
             ),
             child: _isProcessing
                 ? const SizedBox(
-                    width: 16,
-                    height: 16,
+                    width: 20,
+                    height: 20,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
                 : const Text('적용'),
@@ -473,8 +475,8 @@ class _BackgroundRemoveDialogState extends State<BackgroundRemoveDialog> {
 
   SliderThemeData _sliderTheme(BuildContext context) {
     return SliderTheme.of(context).copyWith(
-      thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
-      overlayShape: const RoundSliderOverlayShape(overlayRadius: 10),
+      thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+      overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
       trackHeight: 2,
       activeTrackColor: EditorColors.primary,
       inactiveTrackColor: EditorColors.border,
@@ -497,7 +499,7 @@ class _SectionHeader extends StatelessWidget {
     return Text(
       title,
       style: const TextStyle(
-        fontSize: 12,
+        fontSize: 14,
         color: EditorColors.iconDefault,
         fontWeight: FontWeight.w600,
       ),
@@ -522,7 +524,7 @@ class _ColorToggleButton extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.all(3),
+        padding: const EdgeInsets.all(4),
         decoration: BoxDecoration(
           color: isSelected
               ? EditorColors.primary.withValues(alpha: 0.15)
@@ -530,14 +532,14 @@ class _ColorToggleButton extends StatelessWidget {
           borderRadius: BorderRadius.circular(4),
         ),
         child: Container(
-          width: 22,
-          height: 22,
+          width: 26,
+          height: 26,
           decoration: BoxDecoration(
             color: color,
             borderRadius: BorderRadius.circular(2),
             border: Border.all(
               color: isSelected ? EditorColors.primary : EditorColors.border,
-              width: isSelected ? 1.5 : 1,
+              width: isSelected ? 2 : 1,
             ),
           ),
         ),
@@ -562,7 +564,7 @@ class _OptionButton extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
           color: isSelected
               ? EditorColors.primary.withValues(alpha: 0.15)
@@ -574,14 +576,14 @@ class _OptionButton extends StatelessWidget {
           children: [
             Icon(
               isSelected ? Icons.radio_button_checked : Icons.radio_button_off,
-              size: 14,
+              size: 16,
               color: isSelected ? EditorColors.primary : EditorColors.iconDisabled,
             ),
-            const SizedBox(width: 6),
+            const SizedBox(width: 8),
             Text(
               label,
               style: TextStyle(
-                fontSize: 11,
+                fontSize: 13,
                 color: isSelected ? EditorColors.primary : EditorColors.iconDefault,
                 fontWeight: isSelected ? FontWeight.w500 : FontWeight.normal,
               ),
@@ -615,17 +617,17 @@ class _SliderRow extends StatelessWidget {
     return Row(
       children: [
         SizedBox(
-          width: 100,
+          width: 120,
           child: Text(
             label,
-            style: const TextStyle(fontSize: 11, color: EditorColors.iconDefault),
+            style: const TextStyle(fontSize: 13, color: EditorColors.iconDefault),
           ),
         ),
         Expanded(
           child: SliderTheme(
             data: SliderTheme.of(context).copyWith(
-              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
-              overlayShape: const RoundSliderOverlayShape(overlayRadius: 10),
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+              overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
               trackHeight: 2,
               activeTrackColor: EditorColors.primary,
               inactiveTrackColor: EditorColors.border,
@@ -641,12 +643,12 @@ class _SliderRow extends StatelessWidget {
           ),
         ),
         SizedBox(
-          width: 36,
+          width: 44,
           child: Text(
             suffix != null ? '$value$suffix' : '$value',
             textAlign: TextAlign.right,
             style: const TextStyle(
-              fontSize: 11,
+              fontSize: 13,
               fontFamily: 'monospace',
               color: EditorColors.iconDisabled,
             ),
@@ -675,13 +677,15 @@ class _ToggleRow extends StatelessWidget {
         Expanded(
           child: Text(
             label,
-            style: const TextStyle(fontSize: 11, color: EditorColors.iconDefault),
+            style: const TextStyle(fontSize: 13, color: EditorColors.iconDefault),
           ),
         ),
         SizedBox(
-          height: 20,
-          child: Transform.scale(
-            scale: 0.65,
+          width: 36,
+          height: 24,
+          child: FittedBox(
+            fit: BoxFit.contain,
+            alignment: Alignment.centerRight,
             child: Switch(
               value: value,
               onChanged: onChanged,
@@ -691,6 +695,7 @@ class _ToggleRow extends StatelessWidget {
               inactiveTrackColor: EditorColors.border,
               trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
               materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              splashRadius: 0,
             ),
           ),
         ),
@@ -741,17 +746,17 @@ class _EyedropperButton extends StatelessWidget {
       message: '이미지에서 색상 선택',
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(3),
+        borderRadius: BorderRadius.circular(4),
         child: Container(
-          width: 28,
-          height: 28,
+          width: 34,
+          height: 34,
           decoration: BoxDecoration(
             color: EditorColors.inputBackground,
-            borderRadius: BorderRadius.circular(3),
+            borderRadius: BorderRadius.circular(4),
           ),
           child: const Icon(
             Icons.colorize,
-            size: 16,
+            size: 18,
             color: EditorColors.iconDefault,
           ),
         ),

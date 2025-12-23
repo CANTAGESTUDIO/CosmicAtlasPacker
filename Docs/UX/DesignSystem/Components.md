@@ -70,37 +70,134 @@ TextButton.styleFrom(
 
 ---
 
-## Input
+## Input / TextField
 
 ### Variants
 
 | Variant | Border | Background | Usage |
 |---------|--------|------------|-------|
-| Filled | None (default), primary (focus) | `inputBackground` | Standard inputs |
+| Default | `border` (default), `primary` (focus) | `inputBackground` | Standard inputs |
+| Error | `error` | `inputBackground` | Validation errors |
 
 ### Sizes
 
-| Size | Height | Font Size | Padding |
-|------|--------|-----------|---------|
-| Small | 24px | 11px | 6px 8px |
-| Medium | 28px | 11px | 8px 8px |
+| Size | Height | Font Size | Padding | Usage |
+|------|--------|-----------|---------|-------|
+| Small | 24px | 11px | 6px horizontal | Compact fields (number inputs) |
+| Medium | 28px | 11px | 8px horizontal, 8px vertical | Standard text fields |
 
-### Input Style Code
+### TextField Component Code (EditorTextField)
+
+**중요**: 모든 입력 필드는 이 표준 컴포넌트를 사용해야 합니다.
 
 ```dart
-InputDecoration(
-  isDense: true,
-  contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-  filled: true,
-  fillColor: EditorColors.inputBackground,
-  border: OutlineInputBorder(
-    borderRadius: BorderRadius.circular(4),
-    borderSide: BorderSide.none,  // No border by default
-  ),
-  focusedBorder: OutlineInputBorder(
-    borderRadius: BorderRadius.circular(4),
-    borderSide: BorderSide(color: EditorColors.primary, width: 1),
-  ),
+/// 에디터 전용 텍스트필드 - 키보드 단축키 충돌 방지 포함
+class EditorTextField extends StatelessWidget {
+  final TextEditingController? controller;
+  final String? hintText;
+  final String? initialValue;
+  final ValueChanged<String>? onChanged;
+  final ValueChanged<String>? onSubmitted;
+  final List<TextInputFormatter>? inputFormatters;
+  final TextInputType? keyboardType;
+  final bool hasError;
+  final String? errorText;
+
+  const EditorTextField({
+    super.key,
+    this.controller,
+    this.hintText,
+    this.initialValue,
+    this.onChanged,
+    this.onSubmitted,
+    this.inputFormatters,
+    this.keyboardType,
+    this.hasError = false,
+    this.errorText,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Focus(
+      // Prevent keyboard shortcuts from intercepting input
+      onKeyEvent: (node, event) => KeyEventResult.skipRemainingHandlers,
+      child: TextField(
+        controller: controller,
+        style: const TextStyle(
+          fontSize: 11,
+          color: EditorColors.iconDefault,
+        ),
+        decoration: InputDecoration(
+          isDense: true,
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 8,
+            vertical: 8,
+          ),
+          filled: true,
+          fillColor: EditorColors.inputBackground,
+          hintText: hintText,
+          hintStyle: TextStyle(
+            fontSize: 11,
+            color: EditorColors.iconDisabled.withValues(alpha: 0.7),
+          ),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(3),
+            borderSide: BorderSide(
+              color: hasError ? EditorColors.error : EditorColors.border,
+            ),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(3),
+            borderSide: BorderSide(
+              color: hasError ? EditorColors.error : EditorColors.border,
+            ),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(3),
+            borderSide: BorderSide(
+              color: hasError ? EditorColors.error : EditorColors.primary,
+            ),
+          ),
+          errorText: errorText,
+          errorStyle: const TextStyle(fontSize: 10),
+        ),
+        keyboardType: keyboardType,
+        inputFormatters: inputFormatters,
+        onChanged: onChanged,
+        onSubmitted: onSubmitted,
+      ),
+    );
+  }
+}
+```
+
+### 핵심 사항
+
+1. **키보드 단축키 충돌 방지**: `Focus` 위젯으로 감싸서 `onKeyEvent`에서 `KeyEventResult.skipRemainingHandlers` 반환
+2. **일관된 스타일**: 모든 입력 필드에 동일한 `fontSize: 11`, `contentPadding`, `borderRadius: 3` 적용
+3. **포커스 표시**: 포커스 시 `primary` 색상 테두리
+4. **에러 상태**: `hasError: true` 시 빨간색 테두리
+
+### 사용 예시
+
+```dart
+// 다이얼로그에서 사용
+EditorTextField(
+  hintText: 'sprite',
+  initialValue: _idPrefix,
+  onChanged: (value) => _idPrefix = value,
+  inputFormatters: [
+    FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9_]')),
+  ],
+)
+
+// 숫자 입력
+EditorTextField(
+  keyboardType: TextInputType.number,
+  inputFormatters: [
+    FilteringTextInputFormatter.digitsOnly,
+  ],
+  onSubmitted: (value) => _onValueChanged(),
 )
 ```
 
