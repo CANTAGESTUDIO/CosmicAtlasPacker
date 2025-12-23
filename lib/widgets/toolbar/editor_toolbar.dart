@@ -6,6 +6,7 @@ import '../../models/enums/tool_mode.dart';
 import '../../providers/editor_state_provider.dart';
 import '../../providers/export_provider.dart';
 import '../../theme/editor_colors.dart';
+import '../dialogs/export_dialog.dart';
 
 /// Editor Toolbar - tool mode selection and zoom controls
 class EditorToolbar extends ConsumerWidget {
@@ -40,50 +41,66 @@ class EditorToolbar extends ConsumerWidget {
           // Divider
           _toolbarDivider(),
 
-          // Tool mode buttons
+          // Tool mode buttons (disabled in animation mode)
           _ToolButton(
             icon: Icons.near_me_outlined,
             tooltip: 'Select (V)',
             isActive: currentTool == ToolMode.select,
-            onPressed: () =>
-                ref.read(toolModeProvider.notifier).state = ToolMode.select,
+            isEnabled: editorMode != EditorMode.animation,
+            onPressed: editorMode == EditorMode.animation
+                ? null
+                : () =>
+                    ref.read(toolModeProvider.notifier).state = ToolMode.select,
           ),
           _ToolButton(
             icon: Icons.crop_square_outlined,
             tooltip: 'Rectangle Slice (R)',
             isActive: currentTool == ToolMode.rectSlice,
-            onPressed: () =>
-                ref.read(toolModeProvider.notifier).state = ToolMode.rectSlice,
+            isEnabled: editorMode != EditorMode.animation,
+            onPressed: editorMode == EditorMode.animation
+                ? null
+                : () =>
+                    ref.read(toolModeProvider.notifier).state = ToolMode.rectSlice,
           ),
           _ToolButton(
             icon: Icons.flash_on_outlined,
             tooltip: 'Auto Slice (A)',
-            onPressed: () {
-              ref.read(showAutoSliceDialogProvider)?.call();
-            },
+            isEnabled: editorMode != EditorMode.animation,
+            onPressed: editorMode == EditorMode.animation
+                ? null
+                : () {
+                    ref.read(showAutoSliceDialogProvider)?.call();
+                  },
           ),
           _ToolButton(
             icon: Icons.grid_on_outlined,
             tooltip: 'Grid Slice (G)',
-            onPressed: () {
-              ref.read(showGridSliceDialogProvider)?.call();
-            },
+            isEnabled: editorMode != EditorMode.animation,
+            onPressed: editorMode == EditorMode.animation
+                ? null
+                : () {
+                    ref.read(showGridSliceDialogProvider)?.call();
+                  },
           ),
           _ToolButton(
             icon: Icons.format_color_reset,
             tooltip: '배경색 제거 (B)',
-            onPressed: () {
-              ref.read(showBackgroundRemoveDialogProvider)?.call();
-            },
+            isEnabled: editorMode != EditorMode.animation,
+            onPressed: editorMode == EditorMode.animation
+                ? null
+                : () {
+                    ref.read(showBackgroundRemoveDialogProvider)?.call();
+                  },
           ),
 
           // Divider
           _toolbarDivider(),
 
-          // Zoom controls
+          // Zoom controls (disabled in animation mode)
           _ToolButton(
             icon: Icons.remove,
             tooltip: 'Zoom Out',
+            isEnabled: editorMode != EditorMode.animation,
             onPressed: zoomLevel <= ZoomPresets.min
                 ? null
                 : () {
@@ -101,13 +118,16 @@ class EditorToolbar extends ConsumerWidget {
             child: Text(
               '${zoomLevel.round()}%',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: EditorColors.iconDefault,
+                    color: editorMode == EditorMode.animation
+                        ? EditorColors.iconDisabled
+                        : EditorColors.iconDefault,
                   ),
             ),
           ),
           _ToolButton(
             icon: Icons.add,
             tooltip: 'Zoom In',
+            isEnabled: editorMode != EditorMode.animation,
             onPressed: zoomLevel >= ZoomPresets.max
                 ? null
                 : () {
@@ -123,11 +143,12 @@ class EditorToolbar extends ConsumerWidget {
           // Divider
           _toolbarDivider(),
 
-          // Grid toggle
+          // Grid toggle (disabled in animation mode)
           _ToolButton(
             icon: showGrid ? Icons.grid_on : Icons.grid_off,
             tooltip: 'Toggle Grid',
             isActive: showGrid,
+            isEnabled: editorMode != EditorMode.animation,
             onPressed: () =>
                 ref.read(showGridProvider.notifier).state = !showGrid,
           ),
@@ -185,25 +206,16 @@ class EditorToolbar extends ConsumerWidget {
       return;
     }
 
-    final success = await ref.read(exportNotifierProvider.notifier).exportWithDialog();
+    // ExportDialog를 표시하고 결과를 받음
+    final success = await ExportDialog.show(context);
 
     if (!context.mounted) return;
 
-    final exportState = ref.read(exportNotifierProvider);
-
-    if (success && exportState.lastPngPath != null) {
+    if (success) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Exported: ${exportState.lastPngPath!.split('/').last}'),
-          duration: const Duration(seconds: 3),
-        ),
-      );
-    } else if (exportState.lastError != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Export failed: ${exportState.lastError}'),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 3),
+        const SnackBar(
+          content: Text('내보내기 완료'),
+          duration: Duration(seconds: 3),
         ),
       );
     }
@@ -214,17 +226,23 @@ class _ToolButton extends StatelessWidget {
   final IconData icon;
   final String tooltip;
   final bool isActive;
+  final bool isEnabled;
   final VoidCallback? onPressed;
 
   const _ToolButton({
     required this.icon,
     required this.tooltip,
     this.isActive = false,
+    this.isEnabled = true,
     this.onPressed,
   });
 
   @override
   Widget build(BuildContext context) {
+    final iconColor = isEnabled
+        ? (isActive ? EditorColors.iconActive : EditorColors.iconDefault)
+        : EditorColors.iconDisabled;
+
     return Tooltip(
       message: tooltip,
       child: Container(
@@ -241,10 +259,10 @@ class _ToolButton extends StatelessWidget {
           icon: Icon(
             icon,
             size: 18,
-            color: isActive ? EditorColors.iconActive : EditorColors.iconDefault,
+            color: iconColor,
           ),
           padding: EdgeInsets.zero,
-          onPressed: onPressed,
+          onPressed: isEnabled ? onPressed : null,
         ),
       ),
     );
