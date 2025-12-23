@@ -10,6 +10,7 @@ import 'package:multi_split_view/multi_split_view.dart';
 import '../commands/editor_command.dart';
 import '../core/constants/editor_constants.dart';
 import '../models/atlas_project.dart';
+import '../models/enums/editor_mode.dart';
 import '../models/enums/tool_mode.dart';
 import '../models/sprite_data.dart';
 import '../models/sprite_slice_mode.dart';
@@ -34,7 +35,12 @@ import '../widgets/dialogs/background_remove_dialog.dart';
 import '../widgets/dialogs/export_dialog.dart';
 import '../widgets/dialogs/grid_slice_dialog.dart';
 import '../widgets/dialogs/project_settings_dialog.dart';
+import '../widgets/dialogs/texture_settings/texture_packing_settings_dialog.dart';
 import '../widgets/drop/drop_zone_wrapper.dart';
+import '../widgets/panels/animation_list_sidebar.dart';
+import '../widgets/panels/animation_preview_panel.dart';
+import '../widgets/panels/animation_settings_panel.dart';
+import '../widgets/panels/animation_timeline_panel.dart';
 import '../widgets/panels/atlas_preview_panel.dart';
 import '../widgets/panels/multi_source_panel.dart';
 import '../widgets/panels/properties_panel.dart';
@@ -53,6 +59,7 @@ class EditorScreen extends ConsumerStatefulWidget {
 class _EditorScreenState extends ConsumerState<EditorScreen> {
   late MultiSplitViewController _horizontalController;
   late MultiSplitViewController _verticalController;
+  late MultiSplitViewController _animationVerticalController;
 
   static const double _propertiesPanelWidth = 238.0;
 
@@ -72,6 +79,13 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
         Area(minimalSize: EditorConstants.defaultSpriteListHeight, weight: 0.25),
       ],
     );
+    // Animation mode: compact timeline area
+    _animationVerticalController = MultiSplitViewController(
+      areas: [
+        Area(minimalWeight: 0.5, weight: 0.92),
+        Area(minimalSize: 60, weight: 0.08),
+      ],
+    );
 
     // Register global keyboard handler for Space key
     HardwareKeyboard.instance.addHandler(_handleHardwareKey);
@@ -89,6 +103,7 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
     HardwareKeyboard.instance.removeHandler(_handleHardwareKey);
     _horizontalController.dispose();
     _verticalController.dispose();
+    _animationVerticalController.dispose();
     super.dispose();
   }
 
@@ -194,9 +209,7 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
       SelectAllIntent: CallbackAction<SelectAllIntent>(
         onInvoke: (_) => _selectAll(),
       ),
-      DeleteSelectedIntent: CallbackAction<DeleteSelectedIntent>(
-        onInvoke: (_) => _deleteSelected(),
-      ),
+      DeleteSelectedIntent: _DeleteSelectedAction(onDelete: _deleteSelected),
       DeselectAllIntent: CallbackAction<DeselectAllIntent>(
         onInvoke: (_) => _deselectAll(),
       ),
@@ -417,6 +430,11 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
             shortcut: const SingleActivator(LogicalKeyboardKey.comma, meta: true, shift: true),
             onSelected: () => _showAtlasSettingsDialog(),
           ),
+          PlatformMenuItem(
+            label: 'Texture Settings...',
+            shortcut: const SingleActivator(LogicalKeyboardKey.keyT, meta: true, shift: true),
+            onSelected: () => _showTextureSettingsDialog(),
+          ),
         ],
       ),
       PlatformMenu(
@@ -449,6 +467,16 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
   }
 
   Widget _buildMainContent() {
+    final editorMode = ref.watch(editorModeProvider);
+
+    return switch (editorMode) {
+      EditorMode.texturePacker => _buildTexturePackerLayout(),
+      EditorMode.animation => _buildAnimationLayout(),
+    };
+  }
+
+  /// Build texture packer mode layout (existing layout)
+  Widget _buildTexturePackerLayout() {
     // Custom divider theme - 1px 두께로 선만 표시
     final dividerThemeData = MultiSplitViewThemeData(
       dividerThickness: 1,
@@ -518,6 +546,76 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  /// Build animation mode layout
+  /// Layout: [Animation List | Atlas Preview | Animation Preview | Animation Settings]
+  ///         [Animation Timeline]
+  Widget _buildAnimationLayout() {
+    // Custom divider theme - 1px 두께로 선만 표시
+    final dividerThemeData = MultiSplitViewThemeData(
+      dividerThickness: 1,
+      dividerPainter: null,
+    );
+
+    return Column(
+      children: [
+        // Top area: Atlas Preview + Animation List + Animation Preview + Animation Settings
+        Expanded(
+          child: MultiSplitViewTheme(
+            data: dividerThemeData,
+            child: MultiSplitView(
+              controller: _horizontalController,
+              axis: Axis.horizontal,
+              antiAliasingWorkaround: false,
+              dividerBuilder:
+                  (axis, index, resizable, dragging, highlighted, themeData) {
+                final lineColor = dragging || highlighted
+                    ? EditorColors.primary
+                    : EditorColors.divider;
+                return Container(color: lineColor);
+              },
+              children: [
+                // Atlas Preview Panel - shows packed atlas for frame selection (no settings menu in animation mode)
+                _buildPanelContainer(
+                  title: 'Atlas',
+                  child: const AtlasPreviewPanel(hideSettingsMenu: true),
+                ),
+
+                // Animation List Sidebar + Animation Preview Panel
+                Row(
+                  children: [
+                    // Animation List Sidebar (fixed width)
+                    const AnimationListSidebar(),
+                    // Animation Preview Panel - shows animation playback
+                    Expanded(
+                      child: _buildPanelContainer(
+                        title: 'Animation Preview',
+                        showHeader: false,
+                        child: const AnimationPreviewPanel(),
+                      ),
+                    ),
+                  ],
+                ),
+
+                // Animation Settings Panel
+                _buildPanelContainer(
+                  title: 'Settings',
+                  showHeader: false,
+                  child: const AnimationSettingsPanel(),
+                ),
+              ],
+            ),
+          ),
+        ),
+
+        // Bottom area: Animation Timeline - 고정 높이 (헤더 40 + 리스트 150 = 190)
+        SizedBox(
+          height: 190,
+          child: const AnimationTimelinePanel(),
+        ),
+      ],
     );
   }
 
@@ -1134,6 +1232,16 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
     await AtlasSettingsDialog.show(context);
   }
 
+  Future<void> _showTextureSettingsDialog() async {
+    // Get atlas dimensions for memory info panel
+    final packingResult = ref.read(packingResultProvider);
+    await TexturePackingSettingsDialog.show(
+      context,
+      atlasWidth: packingResult?.atlasWidth,
+      atlasHeight: packingResult?.atlasHeight,
+    );
+  }
+
   Future<void> _showProjectSettingsDialog() async {
     await ProjectSettingsDialog.show(context);
   }
@@ -1273,5 +1381,48 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
 
   void _setTool(ToolMode mode) {
     ref.read(toolModeProvider.notifier).state = mode;
+  }
+}
+
+/// Custom action for delete that checks if a text field is focused
+/// If text field is focused, the action is disabled so backspace works normally
+class _DeleteSelectedAction extends ContextAction<DeleteSelectedIntent> {
+  final VoidCallback onDelete;
+
+  _DeleteSelectedAction({required this.onDelete});
+
+  @override
+  bool isEnabled(DeleteSelectedIntent intent, [BuildContext? context]) {
+    if (context == null) return true;
+
+    // Check if any text field is currently focused
+    final focusNode = FocusManager.instance.primaryFocus;
+    if (focusNode == null) return true;
+
+    // Check if the focused widget's context contains an EditableText
+    final focusContext = focusNode.context;
+    if (focusContext != null) {
+      // Look for EditableText in the focused widget's tree
+      bool hasEditableText = false;
+      focusContext.visitAncestorElements((element) {
+        if (element.widget is EditableText) {
+          hasEditableText = true;
+          return false; // Stop visiting
+        }
+        return true; // Continue visiting
+      });
+
+      if (hasEditableText) {
+        return false; // Disable action when text field is focused
+      }
+    }
+
+    return true;
+  }
+
+  @override
+  Object? invoke(DeleteSelectedIntent intent, [BuildContext? context]) {
+    onDelete();
+    return null;
   }
 }

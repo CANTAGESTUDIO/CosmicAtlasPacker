@@ -6,6 +6,7 @@ import '../../models/sprite_data.dart';
 import '../../models/sprite_region.dart';
 import '../../providers/sprite_provider.dart';
 import '../../theme/editor_colors.dart';
+import '../common/editor_text_field.dart';
 
 /// Editor widget for 9-slice border settings
 class NineSliceEditor extends ConsumerStatefulWidget {
@@ -196,40 +197,22 @@ class _NineSliceEditorState extends ConsumerState<NineSliceEditor> {
           ),
         ),
         Expanded(
-          child: SizedBox(
+          child: ShortcutBlockingNumberField(
+            controller: controller,
             height: 24,
-            child: TextField(
-              controller: controller,
-              enabled: _isEnabled,
-              style: const TextStyle(fontSize: 11),
-              decoration: InputDecoration(
-                isDense: true,
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 6,
-                  vertical: 6,
-                ),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                suffixText: 'px',
-                suffixStyle: TextStyle(
-                  fontSize: 9,
-                  color: EditorColors.iconDisabled,
-                ),
-              ),
-              keyboardType: TextInputType.number,
-              inputFormatters: [
-                FilteringTextInputFormatter.digitsOnly,
-              ],
-              onSubmitted: (value) {
-                final intValue = int.tryParse(value) ?? 0;
-                onChanged(intValue);
-              },
-              onTapOutside: (_) {
-                final intValue = int.tryParse(controller.text) ?? 0;
-                onChanged(intValue);
-              },
-            ),
+            allowDecimal: false,
+            allowNegative: false,
+            textAlign: TextAlign.start,
+            style: const TextStyle(fontSize: 11),
+            suffixText: 'px',
+            onSubmitted: () {
+              final intValue = int.tryParse(controller.text) ?? 0;
+              onChanged(intValue);
+            },
+            onTapOutside: () {
+              final intValue = int.tryParse(controller.text) ?? 0;
+              onChanged(intValue);
+            },
           ),
         ),
       ],
@@ -329,15 +312,26 @@ class _NineSliceEditorState extends ConsumerState<NineSliceEditor> {
         ),
         content: SizedBox(
           width: 200,
-          child: TextField(
+          child: ShortcutBlockingNumberField(
             controller: controller,
             autofocus: true,
-            keyboardType: TextInputType.number,
-            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-            decoration: const InputDecoration(
-              labelText: 'Border size (px)',
-              border: OutlineInputBorder(),
-            ),
+            allowDecimal: false,
+            allowNegative: false,
+            textAlign: TextAlign.start,
+            hintText: 'Border size (px)',
+            onSubmitted: () {
+              final value = int.tryParse(controller.text) ?? 0;
+              if (value > 0) {
+                final uniform = NineSliceBorder(
+                  left: value,
+                  right: value,
+                  top: value,
+                  bottom: value,
+                ).clampToSize(widget.sprite.width, widget.sprite.height);
+                _applyNineSlice(uniform);
+              }
+              Navigator.of(context).pop();
+            },
           ),
         ),
         actions: [

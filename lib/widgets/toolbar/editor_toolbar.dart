@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../models/enums/editor_mode.dart';
 import '../../models/enums/tool_mode.dart';
 import '../../providers/editor_state_provider.dart';
 import '../../providers/export_provider.dart';
@@ -12,6 +13,7 @@ class EditorToolbar extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final editorMode = ref.watch(editorModeProvider);
     final currentTool = ref.watch(toolModeProvider);
     final showGrid = ref.watch(showGridProvider);
     final zoomLevel = ref.watch(zoomLevelProvider);
@@ -27,6 +29,17 @@ class EditorToolbar extends ConsumerWidget {
       child: Row(
         children: [
           const SizedBox(width: 8),
+          // Editor mode toggle (Texture Packer / Animation)
+          _EditorModeToggle(
+            currentMode: editorMode,
+            onModeChanged: (mode) {
+              ref.read(editorModeProvider.notifier).state = mode;
+            },
+          ),
+
+          // Divider
+          _toolbarDivider(),
+
           // Tool mode buttons
           _ToolButton(
             icon: Icons.near_me_outlined,
@@ -232,6 +245,106 @@ class _ToolButton extends StatelessWidget {
           ),
           padding: EdgeInsets.zero,
           onPressed: onPressed,
+        ),
+      ),
+    );
+  }
+}
+
+/// Editor mode toggle button (Texture Packer / Animation)
+class _EditorModeToggle extends StatelessWidget {
+  final EditorMode currentMode;
+  final ValueChanged<EditorMode> onModeChanged;
+
+  const _EditorModeToggle({
+    required this.currentMode,
+    required this.onModeChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 28,
+      decoration: BoxDecoration(
+        color: EditorColors.inputBackground,
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: EditorColors.border, width: 1),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _ModeButton(
+            icon: Icons.grid_view_rounded,
+            label: '패커',
+            tooltip: EditorMode.texturePacker.tooltip,
+            isActive: currentMode == EditorMode.texturePacker,
+            onPressed: () => onModeChanged(EditorMode.texturePacker),
+          ),
+          Container(
+            width: 1,
+            height: 20,
+            color: EditorColors.border,
+          ),
+          _ModeButton(
+            icon: Icons.animation,
+            label: '애니',
+            tooltip: EditorMode.animation.tooltip,
+            isActive: currentMode == EditorMode.animation,
+            onPressed: () => onModeChanged(EditorMode.animation),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ModeButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String tooltip;
+  final bool isActive;
+  final VoidCallback onPressed;
+
+  const _ModeButton({
+    required this.icon,
+    required this.label,
+    required this.tooltip,
+    required this.isActive,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: isActive ? EditorColors.primary.withValues(alpha: 0.15) : Colors.transparent,
+        borderRadius: BorderRadius.circular(3),
+        child: InkWell(
+          onTap: onPressed,
+          borderRadius: BorderRadius.circular(3),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  icon,
+                  size: 14,
+                  color: isActive ? EditorColors.primary : EditorColors.iconDefault,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
+                    color: isActive ? EditorColors.primary : EditorColors.iconDefault,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );

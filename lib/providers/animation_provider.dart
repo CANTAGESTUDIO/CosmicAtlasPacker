@@ -22,6 +22,9 @@ class AnimationState {
   /// Counter for generating unique animation IDs
   final int nextId;
 
+  /// Direction for ping-pong playback (1 = forward, -1 = backward)
+  final int pingPongDirection;
+
   const AnimationState({
     this.sequences = const [],
     this.selectedAnimationId,
@@ -29,6 +32,7 @@ class AnimationState {
     this.isPlaying = false,
     this.currentPlaybackFrame = 0,
     this.nextId = 0,
+    this.pingPongDirection = 1,
   });
 
   AnimationState copyWith({
@@ -38,6 +42,7 @@ class AnimationState {
     bool? isPlaying,
     int? currentPlaybackFrame,
     int? nextId,
+    int? pingPongDirection,
     bool clearSelectedAnimation = false,
     bool clearSelectedFrame = false,
   }) {
@@ -52,6 +57,7 @@ class AnimationState {
       isPlaying: isPlaying ?? this.isPlaying,
       currentPlaybackFrame: currentPlaybackFrame ?? this.currentPlaybackFrame,
       nextId: nextId ?? this.nextId,
+      pingPongDirection: pingPongDirection ?? this.pingPongDirection,
     );
   }
 
@@ -131,6 +137,7 @@ class AnimationNotifier extends StateNotifier<AnimationState> {
       clearSelectedFrame: true,
       isPlaying: false,
       currentPlaybackFrame: 0,
+      pingPongDirection: 1, // Reset ping-pong direction when selecting new animation
     );
   }
 
@@ -174,6 +181,14 @@ class AnimationNotifier extends StateNotifier<AnimationState> {
     if (animation == null) return;
 
     updateAnimation(animationId, animation.copyWith(speed: speed.clamp(0.1, 10.0)));
+  }
+
+  /// Set FPS for animation
+  void setFps(String animationId, int fps) {
+    final animation = _getAnimation(animationId);
+    if (animation == null) return;
+
+    updateAnimation(animationId, animation.copyWith(fps: fps.clamp(1, 60)));
   }
 
   // ============================================
@@ -366,10 +381,12 @@ class AnimationNotifier extends StateNotifier<AnimationState> {
       return false;
     }
 
-    final nextFrame = state.currentPlaybackFrame + 1;
+    final currentFrame = state.currentPlaybackFrame;
+    final direction = state.pingPongDirection;
 
     switch (animation.loopMode) {
       case AnimationLoopMode.once:
+        final nextFrame = currentFrame + 1;
         if (nextFrame >= animation.frameCount) {
           stop();
           return false;
@@ -378,19 +395,44 @@ class AnimationNotifier extends StateNotifier<AnimationState> {
         return true;
 
       case AnimationLoopMode.loop:
-        state = state.copyWith(
-          currentPlaybackFrame: nextFrame % animation.frameCount,
-        );
+        final nextFrame = (currentFrame + 1) % animation.frameCount;
+        state = state.copyWith(currentPlaybackFrame: nextFrame);
         return true;
 
       case AnimationLoopMode.pingPong:
-        // Simple ping-pong: 0,1,2,3,2,1,0,1,2...
-        // For now, just loop. Full ping-pong needs direction state.
+        // Ping-pong: 0,1,2,3,2,1,0,1,2,3...
+        int nextFrame = currentFrame + direction;
+        int newDirection = direction;
+
+        if (nextFrame >= animation.frameCount) {
+          // Reached end, reverse direction
+          nextFrame = animation.frameCount - 2;
+          newDirection = -1;
+          if (nextFrame < 0) nextFrame = 0;
+        } else if (nextFrame < 0) {
+          // Reached start, reverse direction
+          nextFrame = 1;
+          newDirection = 1;
+          if (nextFrame >= animation.frameCount) nextFrame = 0;
+        }
+
         state = state.copyWith(
-          currentPlaybackFrame: nextFrame % animation.frameCount,
+          currentPlaybackFrame: nextFrame.clamp(0, animation.frameCount - 1),
+          pingPongDirection: newDirection,
         );
         return true;
     }
+  }
+
+  /// Get current frame's duration in milliseconds
+  int getCurrentFrameDurationMs() {
+    final animation = state.selectedAnimation;
+    if (animation == null || animation.isEmpty) return 100;
+
+    final frame = animation.getFrameAt(state.currentPlaybackFrame);
+    if (frame == null) return 100;
+
+    return frame.durationMs;
   }
 
   /// Go to first frame

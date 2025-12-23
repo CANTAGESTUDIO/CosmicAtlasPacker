@@ -15,6 +15,8 @@ import '../../providers/sprite_provider.dart';
 import '../../services/bin_packing_service.dart';
 import '../../theme/editor_colors.dart';
 import '../common/draggable_dialog.dart';
+import '../common/editor_text_field.dart';
+import 'texture_settings/texture_packing_settings_dialog.dart';
 
 /// Export dialog settings state
 class ExportDialogSettings {
@@ -383,18 +385,10 @@ class _ExportDialogState extends ConsumerState<ExportDialog> {
               ),
             ),
             const SizedBox(height: 4),
-            TextField(
+            ShortcutBlockingTextField(
               controller: _fileNameController,
-              decoration: InputDecoration(
-                isDense: true,
-                hintText: 'atlas',
-                suffixText: '.png / .json',
-                suffixStyle: TextStyle(
-                  fontSize: 10,
-                  color: EditorColors.iconDisabled,
-                ),
-              ),
-              onChanged: (value) {
+              hintText: 'atlas',
+              onSubmitted: (value) {
                 _updateSettings(_settings.copyWith(fileName: value));
               },
             ),
@@ -526,7 +520,26 @@ class _ExportDialogState extends ConsumerState<ExportDialog> {
             ),
           ),
         ],
+        const SizedBox(height: 12),
+        // Texture settings button
+        OutlinedButton.icon(
+          onPressed: () => _showTextureSettings(),
+          icon: const Icon(Icons.tune, size: 14),
+          label: const Text('텍스처 설정...'),
+          style: OutlinedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            textStyle: const TextStyle(fontSize: 11),
+          ),
+        ),
       ],
+    );
+  }
+
+  Future<void> _showTextureSettings() async {
+    await TexturePackingSettingsDialog.show(
+      context,
+      atlasWidth: _previewPackingResult?.atlasWidth,
+      atlasHeight: _previewPackingResult?.atlasHeight,
     );
   }
 
@@ -818,19 +831,15 @@ class _NumberField extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 4),
-        TextField(
+        ShortcutBlockingNumberField(
           controller: controller,
-          decoration: InputDecoration(
-            isDense: true,
-            suffixText: suffix,
-            suffixStyle: TextStyle(
-              fontSize: 10,
-              color: EditorColors.iconDisabled,
-            ),
-          ),
-          keyboardType: TextInputType.number,
-          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-          onChanged: onChanged,
+          allowDecimal: false,
+          allowNegative: false,
+          textAlign: TextAlign.start,
+          suffixText: suffix,
+          onSubmitted: () {
+            onChanged?.call(controller.text);
+          },
         ),
       ],
     );

@@ -4,3 +4,4 @@ export 'atlas_project.dart';
 export 'atlas_settings.dart';
 export 'project_settings.dart';
 export 'sprite_data.dart';
+export 'texture_compression_settings.dart';

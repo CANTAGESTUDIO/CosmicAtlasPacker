@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/animation_sequence.dart';
 import '../../providers/animation_provider.dart';
 import '../../theme/editor_colors.dart';
+import '../common/editor_text_field.dart';
 import 'animation_list_panel.dart';
 import 'animation_preview.dart';
 import 'animation_timeline.dart';
@@ -342,19 +343,19 @@ class _UniformDurationButtonState
       return Row(
         children: [
           Expanded(
-            child: TextField(
+            child: ShortcutBlockingNumberField(
               controller: _controller,
               autofocus: true,
               style: const TextStyle(fontSize: 10),
+              textAlign: TextAlign.start,
               decoration: const InputDecoration(
                 isDense: true,
                 contentPadding: EdgeInsets.symmetric(horizontal: 4, vertical: 4),
                 border: OutlineInputBorder(),
                 suffixText: 's',
               ),
-              keyboardType:
-                  const TextInputType.numberWithOptions(decimal: true),
-              onSubmitted: _applyUniformDuration,
+              onSubmitted: () => _applyUniformDuration(_controller.text),
+              onEscape: () => setState(() => _isEditing = false),
             ),
           ),
           const SizedBox(width: 4),

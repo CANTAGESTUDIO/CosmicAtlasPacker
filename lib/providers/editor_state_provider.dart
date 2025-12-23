@@ -1,7 +1,11 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../models/enums/editor_mode.dart';
 import '../models/enums/tool_mode.dart';
+
+/// Current editor mode state (Texture Packer / Animation)
+final editorModeProvider = StateProvider<EditorMode>((ref) => EditorMode.texturePacker);
 
 /// Current tool mode state
 final toolModeProvider = StateProvider<ToolMode>((ref) => ToolMode.select);

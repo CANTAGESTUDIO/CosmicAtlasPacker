@@ -238,25 +238,36 @@ class _AnimationFrameTileState extends State<AnimationFrameTile> {
     if (_isEditingDuration) {
       return SizedBox(
         height: 18,
-        child: TextField(
-          controller: _durationController,
-          autofocus: true,
-          style: const TextStyle(fontSize: 10),
-          decoration: const InputDecoration(
-            isDense: true,
-            contentPadding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-            border: OutlineInputBorder(),
+        child: Focus(
+          onKeyEvent: (node, event) {
+            // Allow Enter key to pass through to TextField's onSubmitted
+            if (event.logicalKey == LogicalKeyboardKey.enter ||
+                event.logicalKey == LogicalKeyboardKey.numpadEnter) {
+              return KeyEventResult.ignored;
+            }
+            // Block all other keys to prevent shortcuts
+            return KeyEventResult.skipRemainingHandlers;
+          },
+          child: TextField(
+            controller: _durationController,
+            autofocus: true,
+            style: const TextStyle(fontSize: 10),
+            decoration: const InputDecoration(
+              isDense: true,
+              contentPadding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+              border: OutlineInputBorder(),
+            ),
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            inputFormatters: [
+              FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*')),
+            ],
+            onSubmitted: (value) {
+              _finishEditing();
+            },
+            onTapOutside: (_) {
+              _finishEditing();
+            },
           ),
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          inputFormatters: [
-            FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*')),
-          ],
-          onSubmitted: (value) {
-            _finishEditing();
-          },
-          onTapOutside: (_) {
-            _finishEditing();
-          },
         ),
       );
     }

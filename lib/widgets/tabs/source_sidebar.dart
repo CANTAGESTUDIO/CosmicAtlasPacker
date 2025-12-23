@@ -11,6 +11,7 @@ import '../../providers/multi_image_provider.dart';
 import '../../providers/multi_sprite_provider.dart';
 import '../../providers/sprite_provider.dart';
 import '../../theme/editor_colors.dart';
+import '../common/editor_text_field.dart';
 
 /// Vertical sidebar for managing multiple source images (like reference images in design tools)
 /// Supports group hierarchy with Photoshop-style collapse/expand
@@ -376,40 +377,32 @@ class _GroupHeaderState extends State<_GroupHeader> {
   }
 
   Widget _buildEditField() {
-    // Wrap with Focus to prevent keyboard shortcuts from intercepting keys
-    return Focus(
-      onKeyEvent: (node, event) {
-        // Consume all key events to prevent shortcuts from intercepting
-        return KeyEventResult.skipRemainingHandlers;
-      },
-      child: SizedBox(
-        height: 16,
-        child: TextField(
-          controller: _editController,
-          focusNode: _editFocusNode,
-          style: const TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.w500,
-            color: EditorColors.iconDefault,
-          ),
-          decoration: InputDecoration(
-            isDense: true,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(2),
-              borderSide: BorderSide(color: EditorColors.warning),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(2),
-              borderSide: BorderSide(color: EditorColors.warning, width: 1.5),
-            ),
-            filled: true,
-            fillColor: EditorColors.surface,
-          ),
-          onSubmitted: (_) => _finishEditing(),
-          onEditingComplete: _finishEditing,
-          textInputAction: TextInputAction.done,
+    return SizedBox(
+      height: 16,
+      child: ShortcutBlockingTextField(
+        controller: _editController!,
+        focusNode: _editFocusNode,
+        style: const TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w500,
+          color: EditorColors.iconDefault,
         ),
+        decoration: InputDecoration(
+          isDense: true,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(2),
+            borderSide: BorderSide(color: EditorColors.warning),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(2),
+            borderSide: BorderSide(color: EditorColors.warning, width: 1.5),
+          ),
+          filled: true,
+          fillColor: EditorColors.surface,
+        ),
+        onSubmitted: (_) => _finishEditing(),
+        onTapOutside: _finishEditing,
       ),
     );
   }
@@ -895,7 +888,7 @@ class _SourceItemState extends State<_SourceItem> {
   Widget _buildEditField() {
     return SizedBox(
       height: widget.isGroupChild ? 14 : 16,
-      child: TextField(
+      child: ShortcutBlockingTextField(
         controller: _editController,
         focusNode: _editFocusNode,
         style: TextStyle(
@@ -918,8 +911,7 @@ class _SourceItemState extends State<_SourceItem> {
           fillColor: EditorColors.surface,
         ),
         onSubmitted: (_) => _finishEditing(),
-        onEditingComplete: _finishEditing,
-        textInputAction: TextInputAction.done,
+        onTapOutside: _finishEditing,
       ),
     );
   }

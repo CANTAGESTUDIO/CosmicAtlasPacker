@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../../models/enums/pivot_preset.dart';
 import '../../models/sprite_data.dart';
 import '../../theme/editor_colors.dart';
+import '../common/editor_text_field.dart';
 
 /// Custom pivot coordinate input widget
 class CustomPivotInput extends StatefulWidget {
@@ -104,7 +104,7 @@ class _CustomPivotInputState extends State<CustomPivotInput> {
   }
 }
 
-class _CoordinateField extends StatelessWidget {
+class _CoordinateField extends StatefulWidget {
   final String label;
   final TextEditingController controller;
   final ValueChanged<String> onChanged;
@@ -116,12 +116,17 @@ class _CoordinateField extends StatelessWidget {
   });
 
   @override
+  State<_CoordinateField> createState() => _CoordinateFieldState();
+}
+
+class _CoordinateFieldState extends State<_CoordinateField> {
+  @override
   Widget build(BuildContext context) {
     return Expanded(
       child: Row(
         children: [
           Text(
-            label,
+            widget.label,
             style: const TextStyle(
               fontSize: 11,
               color: EditorColors.iconDisabled,
@@ -129,45 +134,40 @@ class _CoordinateField extends StatelessWidget {
           ),
           const SizedBox(width: 4),
           Expanded(
-            child: SizedBox(
+            child: ShortcutBlockingNumberField(
+              controller: widget.controller,
               height: 24,
-              child: TextField(
-                controller: controller,
-                style: const TextStyle(
-                  fontSize: 11,
-                  color: EditorColors.iconDefault,
-                ),
-                decoration: InputDecoration(
-                  isDense: true,
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 6,
-                    vertical: 6,
-                  ),
-                  filled: true,
-                  fillColor: EditorColors.inputBackground,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(3),
-                    borderSide: BorderSide(color: EditorColors.border),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(3),
-                    borderSide: BorderSide(color: EditorColors.border),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(3),
-                    borderSide: const BorderSide(color: EditorColors.primary),
-                  ),
-                ),
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                inputFormatters: [
-                  FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*')),
-                ],
-                onSubmitted: onChanged,
-                onEditingComplete: () {
-                  onChanged(controller.text);
-                  FocusScope.of(context).unfocus();
-                },
+              allowDecimal: true,
+              allowNegative: false,
+              textAlign: TextAlign.start,
+              style: const TextStyle(
+                fontSize: 11,
+                color: EditorColors.iconDefault,
               ),
+              decoration: InputDecoration(
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 6,
+                  vertical: 6,
+                ),
+                filled: true,
+                fillColor: EditorColors.inputBackground,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(3),
+                  borderSide: BorderSide(color: EditorColors.border),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(3),
+                  borderSide: BorderSide(color: EditorColors.border),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(3),
+                  borderSide: const BorderSide(color: EditorColors.primary),
+                ),
+              ),
+              onSubmitted: () {
+                widget.onChanged(widget.controller.text);
+              },
             ),
           ),
         ],

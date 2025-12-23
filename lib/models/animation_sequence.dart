@@ -64,6 +64,9 @@ class AnimationSequence with _$AnimationSequence {
 
     /// Playback speed multiplier (1.0 = normal)
     @Default(1.0) double speed,
+
+    /// Frames per second (1-60)
+    @Default(12) int fps,
   }) = _AnimationSequence;
 
   factory AnimationSequence.fromJson(Map<String, dynamic> json) =>

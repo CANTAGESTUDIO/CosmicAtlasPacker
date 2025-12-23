@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/animation_sequence.dart';
 import '../../providers/animation_provider.dart';
 import '../../theme/editor_colors.dart';
+import '../common/editor_text_field.dart';
 
 /// Panel for managing animation sequences
 class AnimationListPanel extends ConsumerStatefulWidget {
@@ -322,7 +323,7 @@ class _AnimationListItemState extends State<_AnimationListItem> {
   }
 
   Widget _buildNameEditor() {
-    return TextField(
+    return ShortcutBlockingTextField(
       controller: widget.nameController,
       autofocus: true,
       style: const TextStyle(
@@ -335,7 +336,8 @@ class _AnimationListItemState extends State<_AnimationListItem> {
         border: OutlineInputBorder(),
       ),
       onSubmitted: widget.onNameSubmitted,
-      onTapOutside: (_) => widget.onEditingCancelled(),
+      onEscape: widget.onEditingCancelled,
+      onTapOutside: widget.onEditingCancelled,
     );
   }
 

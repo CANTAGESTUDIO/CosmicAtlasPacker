@@ -11,7 +11,10 @@ import '../../theme/editor_colors.dart';
 
 /// Atlas Preview Panel - displays packed atlas result with interactive zoom/pan
 class AtlasPreviewPanel extends ConsumerStatefulWidget {
-  const AtlasPreviewPanel({super.key});
+  /// If true, hides the settings menu (used in animation mode)
+  final bool hideSettingsMenu;
+
+  const AtlasPreviewPanel({super.key, this.hideSettingsMenu = false});
 
   @override
   ConsumerState<AtlasPreviewPanel> createState() => _AtlasPreviewPanelState();
@@ -139,12 +142,13 @@ class _AtlasPreviewPanelState extends ConsumerState<AtlasPreviewPanel> {
                         ),
                       ),
                     ),
-                    // Trim controls (right top)
-                    Positioned(
-                      top: 8,
-                      right: 12,
-                      child: _buildTrimControls(),
-                    ),
+                    // Trim controls (right top) - hidden in animation mode
+                    if (!widget.hideSettingsMenu)
+                      Positioned(
+                        top: 8,
+                        right: 12,
+                        child: _buildTrimControls(),
+                      ),
                     // Loading indicator while generating atlas preview
                     if (atlasPreviewAsync.isLoading)
                       Positioned(

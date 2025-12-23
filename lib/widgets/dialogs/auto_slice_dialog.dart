@@ -8,6 +8,7 @@ import '../../services/auto_slicer_service.dart';
 import '../../services/background_remover_service.dart';
 import '../../theme/editor_colors.dart';
 import '../common/draggable_dialog.dart';
+import '../common/editor_text_field.dart';
 
 /// Result from auto slice dialog including processed image
 class AutoSliceDialogResult {
@@ -1080,15 +1081,13 @@ class _ColorToggleButton extends StatelessWidget {
   }
 }
 
-/// Editor TextField - Design System Compliant
-/// Prevents keyboard shortcut conflicts with Focus wrapper
+/// Editor TextField wrapper using common ShortcutBlockingTextField
 class _EditorTextField extends StatefulWidget {
   final String? initialValue;
   final String? hintText;
   final ValueChanged<String>? onChanged;
   final ValueChanged<String>? onSubmitted;
   final List<TextInputFormatter>? inputFormatters;
-  final TextInputType? keyboardType;
   final bool hasError;
 
   const _EditorTextField({
@@ -1097,7 +1096,6 @@ class _EditorTextField extends StatefulWidget {
     this.onChanged,
     this.onSubmitted,
     this.inputFormatters,
-    this.keyboardType,
     this.hasError = false,
   });
 
@@ -1112,62 +1110,62 @@ class _EditorTextFieldState extends State<_EditorTextField> {
   void initState() {
     super.initState();
     _controller = TextEditingController(text: widget.initialValue);
+    _controller.addListener(_handleTextChange);
   }
 
   @override
   void dispose() {
+    _controller.removeListener(_handleTextChange);
     _controller.dispose();
     super.dispose();
   }
 
+  void _handleTextChange() {
+    widget.onChanged?.call(_controller.text);
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Focus(
-      // Prevent keyboard shortcuts from intercepting input
-      onKeyEvent: (node, event) => KeyEventResult.skipRemainingHandlers,
-      child: TextField(
-        controller: _controller,
-        style: const TextStyle(
-          fontSize: 13,
-          color: EditorColors.iconDefault,
-        ),
-        decoration: InputDecoration(
-          isDense: true,
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 10,
-            vertical: 10,
-          ),
-          filled: true,
-          fillColor: EditorColors.inputBackground,
-          hintText: widget.hintText,
-          hintStyle: TextStyle(
-            fontSize: 13,
-            color: EditorColors.iconDisabled.withValues(alpha: 0.7),
-          ),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(4),
-            borderSide: BorderSide(
-              color: widget.hasError ? EditorColors.error : EditorColors.border,
-            ),
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(4),
-            borderSide: BorderSide(
-              color: widget.hasError ? EditorColors.error : EditorColors.border,
-            ),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(4),
-            borderSide: BorderSide(
-              color: widget.hasError ? EditorColors.error : EditorColors.primary,
-            ),
-          ),
-        ),
-        keyboardType: widget.keyboardType,
-        inputFormatters: widget.inputFormatters,
-        onChanged: widget.onChanged,
-        onSubmitted: widget.onSubmitted,
+    return ShortcutBlockingTextField(
+      controller: _controller,
+      style: const TextStyle(
+        fontSize: 13,
+        color: EditorColors.iconDefault,
       ),
+      hintText: widget.hintText,
+      decoration: InputDecoration(
+        isDense: true,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 10,
+          vertical: 10,
+        ),
+        filled: true,
+        fillColor: EditorColors.inputBackground,
+        hintText: widget.hintText,
+        hintStyle: TextStyle(
+          fontSize: 13,
+          color: EditorColors.iconDisabled.withValues(alpha: 0.7),
+        ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(4),
+          borderSide: BorderSide(
+            color: widget.hasError ? EditorColors.error : EditorColors.border,
+          ),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(4),
+          borderSide: BorderSide(
+            color: widget.hasError ? EditorColors.error : EditorColors.border,
+          ),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(4),
+          borderSide: BorderSide(
+            color: widget.hasError ? EditorColors.error : EditorColors.primary,
+          ),
+        ),
+      ),
+      onSubmitted: widget.onSubmitted,
     );
   }
 }

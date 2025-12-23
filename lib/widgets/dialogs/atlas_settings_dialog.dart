@@ -336,7 +336,7 @@ class _AtlasSettingsDialogState extends ConsumerState<AtlasSettingsDialog> {
   }
 }
 
-class _NumberField extends StatelessWidget {
+class _NumberField extends StatefulWidget {
   final String label;
   final TextEditingController controller;
   final String? suffix;
@@ -354,23 +354,42 @@ class _NumberField extends StatelessWidget {
   });
 
   @override
+  State<_NumberField> createState() => _NumberFieldState();
+}
+
+class _NumberFieldState extends State<_NumberField> {
+  late FocusNode _focusNode;
+
+  @override
+  void initState() {
+    super.initState();
+    _focusNode = FocusNode();
+  }
+
+  @override
+  void dispose() {
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    Widget field = Column(
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
             Text(
-              label,
+              widget.label,
               style: TextStyle(
                 fontSize: 11,
                 color: EditorColors.iconDisabled,
               ),
             ),
-            if (tooltip != null) ...[
+            if (widget.tooltip != null) ...[
               const SizedBox(width: 4),
               Tooltip(
-                message: tooltip!,
+                message: widget.tooltip!,
                 child: Icon(
                   Icons.info_outline,
                   size: 12,
@@ -381,27 +400,34 @@ class _NumberField extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 4),
-        TextField(
-          controller: controller,
-          decoration: InputDecoration(
-            isDense: true,
-            suffixText: suffix,
-            hintText: hint,
-            hintStyle: TextStyle(
-              fontSize: 12,
-              color: EditorColors.iconDisabled.withValues(alpha: 0.5),
+        Focus(
+          onKeyEvent: (node, event) {
+            if (_focusNode.hasFocus) {
+              return KeyEventResult.skipRemainingHandlers;
+            }
+            return KeyEventResult.ignored;
+          },
+          child: TextField(
+            controller: widget.controller,
+            focusNode: _focusNode,
+            decoration: InputDecoration(
+              isDense: true,
+              suffixText: widget.suffix,
+              hintText: widget.hint,
+              hintStyle: TextStyle(
+                fontSize: 12,
+                color: EditorColors.iconDisabled.withValues(alpha: 0.5),
+              ),
             ),
+            keyboardType: TextInputType.number,
+            inputFormatters: [
+              FilteringTextInputFormatter.digitsOnly,
+            ],
+            onChanged: widget.onChanged,
           ),
-          keyboardType: TextInputType.number,
-          inputFormatters: [
-            FilteringTextInputFormatter.digitsOnly,
-          ],
-          onChanged: onChanged,
         ),
       ],
     );
-
-    return field;
   }
 }
 
