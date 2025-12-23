@@ -195,33 +195,51 @@ class _AnimationTimelinePanelState extends ConsumerState<AnimationTimelinePanel>
         child: Scrollbar(
           controller: _scrollController,
           thumbVisibility: true,
-          child: ListView.builder(
-            controller: _scrollController,
+          child: ReorderableListView.builder(
+            scrollController: _scrollController,
             scrollDirection: Axis.horizontal,
             // 상단 4, 하단 12 (스크롤바 공간 확보)
             padding: const EdgeInsets.fromLTRB(8, 4, 8, 12),
+            buildDefaultDragHandles: false,
+            proxyDecorator: (child, index, animation) {
+              // 드래그 중인 아이템의 높이를 고정하여 overflow 방지
+              return Material(
+                color: Colors.transparent,
+                child: SizedBox(
+                  height: 142,
+                  child: child,
+                ),
+              );
+            },
+            onReorder: (oldIndex, newIndex) {
+              // ReorderableListView는 newIndex가 oldIndex보다 클 때 1을 더함
+              if (newIndex > oldIndex) newIndex--;
+              ref.read(animationProvider.notifier).reorderFrame(
+                    animation.id,
+                    oldIndex,
+                    newIndex,
+                  );
+            },
             itemCount: animation.frameCount,
             itemBuilder: (context, index) {
               final frame = animation.frames[index];
               final isCurrentFrame = index == currentFrame;
 
-              return SizedBox(
+              return _FrameTile(
                 key: ValueKey('frame_${animation.id}_$index'),
-                child: _FrameTile(
-                  frame: frame,
-                  index: index,
-                  isCurrentFrame: isCurrentFrame,
-                  onTap: () {
-                    ref.read(animationProvider.notifier).setPlaybackFrame(index);
-                  },
-                  onDurationChanged: (duration) {
-                    ref.read(animationProvider.notifier).setFrameDuration(
-                          animation.id,
-                          index,
-                          duration,
-                        );
-                  },
-                ),
+                frame: frame,
+                index: index,
+                isCurrentFrame: isCurrentFrame,
+                onTap: () {
+                  ref.read(animationProvider.notifier).setPlaybackFrame(index);
+                },
+                onDurationChanged: (duration) {
+                  ref.read(animationProvider.notifier).setFrameDuration(
+                        animation.id,
+                        index,
+                        duration,
+                      );
+                },
               );
             },
           ),
@@ -324,7 +342,8 @@ class _FrameTile extends StatefulWidget {
   final VoidCallback onTap;
   final ValueChanged<double> onDurationChanged;
 
-  _FrameTile({
+  const _FrameTile({
+    super.key,
     required this.frame,
     required this.index,
     required this.isCurrentFrame,
@@ -376,67 +395,70 @@ class _FrameTileState extends State<_FrameTile> {
   @override
   Widget build(BuildContext context) {
     // 타일 고정 높이: 썸네일(72) + spacing(6) + text(16) + spacing(6) + input(26) + padding(16) = 142
-    return GestureDetector(
-      onTap: widget.onTap,
-      child: Container(
-        width: 100,
-        height: 142,
-        margin: const EdgeInsets.only(right: 8),
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          color: widget.isCurrentFrame
-              ? EditorColors.primary.withValues(alpha: 0.15)
-              : EditorColors.surface,
-          borderRadius: BorderRadius.circular(6),
-          border: Border.all(
-            color: widget.isCurrentFrame ? EditorColors.primary : EditorColors.border,
-            width: widget.isCurrentFrame ? 2 : 1,
+    return ReorderableDragStartListener(
+      index: widget.index,
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: Container(
+          width: 100,
+          height: 142,
+          margin: const EdgeInsets.only(right: 8),
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: widget.isCurrentFrame
+                ? EditorColors.primary.withValues(alpha: 0.15)
+                : EditorColors.surface,
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(
+              color: widget.isCurrentFrame ? EditorColors.primary : EditorColors.border,
+              width: widget.isCurrentFrame ? 2 : 1,
+            ),
           ),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Frame thumbnail placeholder
-            Container(
-              width: 72,
-              height: 72,
-              decoration: BoxDecoration(
-                color: EditorColors.panelBackground,
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Center(
-                child: Icon(
-                  Icons.image,
-                  size: 32,
-                  color: EditorColors.iconDisabled,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Frame thumbnail placeholder
+              Container(
+                width: 72,
+                height: 72,
+                decoration: BoxDecoration(
+                  color: EditorColors.panelBackground,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Center(
+                  child: Icon(
+                    Icons.image,
+                    size: 32,
+                    color: EditorColors.iconDisabled,
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 6),
+              const SizedBox(height: 6),
 
-            // Frame index
-            Text(
-              '#${widget.index}',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: widget.isCurrentFrame ? FontWeight.w600 : FontWeight.normal,
-                color: widget.isCurrentFrame
-                    ? EditorColors.primary
-                    : EditorColors.iconDisabled,
+              // Frame index
+              Text(
+                '#${widget.index}',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: widget.isCurrentFrame ? FontWeight.w600 : FontWeight.normal,
+                  color: widget.isCurrentFrame
+                      ? EditorColors.primary
+                      : EditorColors.iconDisabled,
+                ),
               ),
-            ),
-            const SizedBox(height: 6),
+              const SizedBox(height: 6),
 
-            // Duration input
-            ShortcutBlockingNumberField(
-              controller: _durationController,
-              focusNode: _focusNode,
-              width: 72,
-              height: 26,
-              onSubmitted: _onDurationSubmit,
-            ),
-          ],
+              // Duration input
+              ShortcutBlockingNumberField(
+                controller: _durationController,
+                focusNode: _focusNode,
+                width: 72,
+                height: 26,
+                onSubmitted: _onDurationSubmit,
+              ),
+            ],
+          ),
         ),
       ),
     );
