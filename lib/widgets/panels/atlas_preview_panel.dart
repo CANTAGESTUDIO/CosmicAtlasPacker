@@ -519,6 +519,20 @@ class _AtlasPreviewPanelState extends ConsumerState<AtlasPreviewPanel> {
               isEnabled: settings.tightPacking,
               onTap: () => notifier.toggleTightPacking(),
             ),
+            const SizedBox(height: 8),
+            // Power of 2 toggle
+            _buildOptionToggle(
+              label: 'Power of 2',
+              isEnabled: settings.powerOfTwo,
+              onTap: () => notifier.togglePowerOfTwo(),
+            ),
+            const SizedBox(height: 8),
+            // Force Square toggle
+            _buildOptionToggle(
+              label: 'Force Square',
+              isEnabled: settings.forceSquare,
+              onTap: () => notifier.toggleForceSquare(),
+            ),
 
             // --- Background Remove Button ---
             const SizedBox(height: 12),

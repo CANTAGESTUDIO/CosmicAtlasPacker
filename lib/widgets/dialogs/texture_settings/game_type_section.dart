@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../models/texture_compression_settings.dart';
 import '../../../providers/texture_packing_settings_provider.dart';
 import '../../../theme/editor_colors.dart';
+import '../../common/editor_dropdown.dart';
 
 /// 게임 타입 섹션 위젯
 /// 게임 타입별 프리셋 선택 및 적용 기능 제공
@@ -80,45 +81,17 @@ class GameTypeSection extends ConsumerWidget {
           ),
 
         // Game type dropdown
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          decoration: BoxDecoration(
-            color: EditorColors.inputBackground,
-            borderRadius: BorderRadius.circular(4),
-            border: Border.all(color: EditorColors.border),
-          ),
-          child: DropdownButton<GameType>(
-            value: currentGameType,
-            items: GameType.values.map((type) {
-              return DropdownMenuItem(
-                value: type,
-                child: Row(
-                  children: [
-                    Icon(
-                      _getGameTypeIcon(type),
-                      size: 16,
-                      color: EditorColors.iconDefault,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(type.displayName),
-                  ],
-                ),
-              );
-            }).toList(),
-            onChanged: (value) {
-              if (value != null) {
-                ref.read(texturePackingSettingsProvider.notifier).updateGameType(value);
-                onChanged?.call(value);
-              }
-            },
-            isExpanded: true,
-            underline: const SizedBox(),
-            dropdownColor: EditorColors.surface,
-            style: TextStyle(
-              fontSize: 13,
-              color: EditorColors.iconDefault,
-            ),
-          ),
+        EditorDropdown<GameType>(
+          value: currentGameType,
+          items: GameType.values,
+          onChanged: (value) {
+            if (value != null) {
+              ref.read(texturePackingSettingsProvider.notifier).updateGameType(value);
+              onChanged?.call(value);
+            }
+          },
+          itemLabelBuilder: (type) => type.displayName,
+          height: 40,
         ),
         const SizedBox(height: 12),
 
@@ -244,36 +217,17 @@ class GameTypeSectionCompact extends ConsumerWidget {
           ),
         ),
         const SizedBox(height: 4),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-          decoration: BoxDecoration(
-            color: EditorColors.inputBackground,
-            borderRadius: BorderRadius.circular(4),
-            border: Border.all(color: EditorColors.border),
-          ),
-          child: DropdownButton<GameType>(
-            value: currentGameType,
-            items: GameType.values.map((type) {
-              return DropdownMenuItem(
-                value: type,
-                child: Text(type.displayName),
-              );
-            }).toList(),
-            onChanged: (value) {
-              if (value != null) {
-                ref.read(texturePackingSettingsProvider.notifier).updateGameType(value);
-                onChanged?.call(value);
-              }
-            },
-            isExpanded: true,
-            underline: const SizedBox(),
-            dropdownColor: EditorColors.surface,
-            isDense: true,
-            style: TextStyle(
-              fontSize: 12,
-              color: EditorColors.iconDefault,
-            ),
-          ),
+        EditorDropdown<GameType>(
+          value: currentGameType,
+          items: GameType.values,
+          onChanged: (value) {
+            if (value != null) {
+              ref.read(texturePackingSettingsProvider.notifier).updateGameType(value);
+              onChanged?.call(value);
+            }
+          },
+          itemLabelBuilder: (type) => type.displayName,
+          height: 32,
         ),
       ],
     );

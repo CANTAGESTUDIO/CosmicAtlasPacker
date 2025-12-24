@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/animation_sequence.dart';
 import '../../providers/animation_provider.dart';
 import '../../theme/editor_colors.dart';
+import '../common/editor_dropdown.dart';
 import '../common/editor_text_field.dart';
 import 'animation_list_panel.dart';
 import 'animation_preview.dart';
@@ -132,30 +133,9 @@ class _AnimationSettingsPanel extends ConsumerWidget {
           // Loop mode
           _SettingRow(
             label: 'Loop',
-            child: DropdownButton<AnimationLoopMode>(
+            child: EditorDropdown<AnimationLoopMode>(
               value: selectedAnimation.loopMode,
-              underline: const SizedBox.shrink(),
-              isDense: true,
-              isExpanded: true,
-              dropdownColor: EditorColors.surface,
-              style: TextStyle(
-                fontSize: 10,
-                color: EditorColors.iconDefault,
-              ),
-              items: const [
-                DropdownMenuItem(
-                  value: AnimationLoopMode.once,
-                  child: Text('Once'),
-                ),
-                DropdownMenuItem(
-                  value: AnimationLoopMode.loop,
-                  child: Text('Loop'),
-                ),
-                DropdownMenuItem(
-                  value: AnimationLoopMode.pingPong,
-                  child: Text('Ping-Pong'),
-                ),
-              ],
+              items: AnimationLoopMode.values,
               onChanged: (mode) {
                 if (mode != null) {
                   ref
@@ -163,6 +143,17 @@ class _AnimationSettingsPanel extends ConsumerWidget {
                       .setLoopMode(selectedAnimation.id, mode);
                 }
               },
+              itemLabelBuilder: (mode) {
+                switch (mode) {
+                  case AnimationLoopMode.once:
+                    return 'Once';
+                  case AnimationLoopMode.loop:
+                    return 'Loop';
+                  case AnimationLoopMode.pingPong:
+                    return 'Ping-Pong';
+                }
+              },
+              height: 28,
             ),
           ),
 

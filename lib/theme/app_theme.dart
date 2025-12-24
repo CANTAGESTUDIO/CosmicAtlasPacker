@@ -81,6 +81,7 @@ class AppTheme {
           foregroundColor: const Color(0xFF0F0F0F), // dark text on orange
           disabledBackgroundColor: EditorColors.borderDark,
           disabledForegroundColor: EditorColors.iconDisabledDark,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
         ),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(

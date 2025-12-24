@@ -7,6 +7,7 @@ import '../../models/animation_sequence.dart';
 import '../../providers/animation_provider.dart';
 import '../../providers/sprite_provider.dart';
 import '../../theme/editor_colors.dart';
+import '../common/editor_dropdown.dart';
 import 'animation_frame_tile.dart';
 
 /// Horizontal timeline widget for animation frames
@@ -349,34 +350,25 @@ class _LoopModeDropdown extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return DropdownButton<AnimationLoopMode>(
+    return EditorDropdown<AnimationLoopMode>(
       value: animation.loopMode,
-      underline: const SizedBox.shrink(),
-      isDense: true,
-      dropdownColor: EditorColors.surface,
-      style: TextStyle(
-        fontSize: 10,
-        color: EditorColors.iconDefault,
-      ),
-      items: const [
-        DropdownMenuItem(
-          value: AnimationLoopMode.once,
-          child: Text('Once'),
-        ),
-        DropdownMenuItem(
-          value: AnimationLoopMode.loop,
-          child: Text('Loop'),
-        ),
-        DropdownMenuItem(
-          value: AnimationLoopMode.pingPong,
-          child: Text('Ping-Pong'),
-        ),
-      ],
+      items: AnimationLoopMode.values,
       onChanged: (mode) {
         if (mode != null) {
           ref.read(animationProvider.notifier).setLoopMode(animation.id, mode);
         }
       },
+      itemLabelBuilder: (mode) {
+        switch (mode) {
+          case AnimationLoopMode.once:
+            return 'Once';
+          case AnimationLoopMode.loop:
+            return 'Loop';
+          case AnimationLoopMode.pingPong:
+            return 'Ping-Pong';
+        }
+      },
+      height: 28,
     );
   }
 }

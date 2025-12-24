@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -5,9 +6,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../models/texture_compression_settings.dart';
 import '../../../providers/texture_packing_settings_provider.dart';
 import '../../../theme/editor_colors.dart';
+import '../../common/editor_dropdown.dart';
 
 /// 6단계 온보딩 스테퍼 위젯
-/// 텍스처 압축 설정을 위한 가이드 온보딩 제공
+/// 텍스처 압축 설정을 위한 가이드 온보딩 제공 (Modern UI)
 class OnboardingStepper extends ConsumerStatefulWidget {
   final VoidCallback? onComplete;
   final VoidCallback? onSkip;
@@ -72,7 +74,7 @@ class _OnboardingStepperState extends ConsumerState<OnboardingStepper> {
     _pageController.animateToPage(
       step - 1,
       duration: const Duration(milliseconds: 300),
-      curve: Curves.easeInOut,
+      curve: Curves.easeInOutCubic,
     );
     ref.read(texturePackingSettingsProvider.notifier).updateOnboardingStep(step);
   }
@@ -134,37 +136,60 @@ class _OnboardingStepperState extends ConsumerState<OnboardingStepper> {
   Widget build(BuildContext context) {
     final currentStep = ref.watch(texturePackingSettingsProvider).onboardingStep;
 
-    return Column(
-      children: [
-        // Progress indicator
-        _buildProgressIndicator(currentStep),
-        const SizedBox(height: 16),
-
-        // Step content
-        Expanded(
-          child: PageView(
-            controller: _pageController,
-            physics: const NeverScrollableScrollPhysics(),
-            children: [
-              _buildStep1TargetDevice(),
-              _buildStep2GraphicsQuality(),
-              _buildStep3MemoryBudget(),
-              _buildStep4CompressionStrategy(),
-              _buildStep5BuildImpact(),
-              _buildStep6QAPlan(),
-            ],
-          ),
+    return Container(
+      decoration: BoxDecoration(
+        color: EditorColors.surface,
+        borderRadius: BorderRadius.circular(12),
+        // Subtle gradient background
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            EditorColors.surface,
+            EditorColors.panelBackground.withOpacity(0.5),
+          ],
         ),
+      ),
+      child: Column(
+        children: [
+          const SizedBox(height: 16),
+          // Progress indicator
+          _buildProgressIndicator(currentStep),
+          const SizedBox(height: 24),
 
-        // Navigation buttons
-        _buildNavigationButtons(currentStep),
-      ],
+          // Step content
+          Expanded(
+            child: PageView(
+              controller: _pageController,
+              physics: const NeverScrollableScrollPhysics(),
+              children: [
+                _buildStepContainer(_buildStep1TargetDevice()),
+                _buildStepContainer(_buildStep2GraphicsQuality()),
+                _buildStepContainer(_buildStep3MemoryBudget()),
+                _buildStepContainer(_buildStep4CompressionStrategy()),
+                _buildStepContainer(_buildStep5BuildImpact()),
+                _buildStepContainer(_buildStep6QAPlan()),
+              ],
+            ),
+          ),
+
+          // Navigation buttons
+          _buildNavigationButtons(currentStep),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStepContainer(Widget child) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: child, // Content is already valid logic
     );
   }
 
   Widget _buildProgressIndicator(int currentStep) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
+      padding: const EdgeInsets.symmetric(horizontal: 32),
       child: Column(
         children: [
           Row(
@@ -176,16 +201,26 @@ class _OnboardingStepperState extends ConsumerState<OnboardingStepper> {
               return Expanded(
                 child: GestureDetector(
                   onTap: step <= currentStep ? () => _goToStep(step) : null,
-                  child: Container(
-                    height: 4,
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    height: 6,
                     margin: EdgeInsets.only(right: index < 5 ? 4 : 0),
                     decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(2),
+                      borderRadius: BorderRadius.circular(3),
                       color: isCompleted
                           ? EditorColors.secondary
                           : isActive
                               ? EditorColors.primary
                               : EditorColors.border,
+                      boxShadow: isActive
+                          ? [
+                              BoxShadow(
+                                color: EditorColors.primary.withOpacity(0.4),
+                                blurRadius: 6,
+                                offset: const Offset(0, 2),
+                              )
+                            ]
+                          : [],
                     ),
                   ),
                 ),
@@ -195,15 +230,18 @@ class _OnboardingStepperState extends ConsumerState<OnboardingStepper> {
           const SizedBox(height: 8),
           Text(
             'Step $currentStep / 6',
-            style: TextStyle(
+            style: const TextStyle(
               fontSize: 11,
+              fontWeight: FontWeight.w600,
               color: EditorColors.iconDisabled,
+              letterSpacing: 0.5,
             ),
           ),
         ],
       ),
     );
   }
+
 
   Widget _buildNavigationButtons(int currentStep) {
     return Padding(
@@ -234,14 +272,38 @@ class _OnboardingStepperState extends ConsumerState<OnboardingStepper> {
     );
   }
 
+  Widget _buildStepTitle(String title) {
+    return Text(
+      title,
+      style: const TextStyle(
+        fontSize: 24,
+        fontWeight: FontWeight.bold,
+        color: EditorColors.iconDefault,
+        letterSpacing: -0.5,
+      ),
+    );
+  }
+
+  Widget _buildStepDescription(String description) {
+    return Text(
+      description,
+      style: const TextStyle(
+        fontSize: 14,
+        color: EditorColors.iconDisabled,
+        height: 1.5,
+      ),
+    );
+  }
+
   // ========== Step 1: 타겟 기기 정의 ==========
   Widget _buildStep1TargetDevice() {
     return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
+      // padding: const EdgeInsets.symmetric(horizontal: 24), // Managed by _buildStepContainer
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _buildStepTitle('타겟 기기 정의'),
+          const SizedBox(height: 8),
           _buildStepDescription('게임이 실행될 최소 사양 기기를 설정하세요.'),
           const SizedBox(height: 24),
 
@@ -250,14 +312,9 @@ class _OnboardingStepperState extends ConsumerState<OnboardingStepper> {
           const SizedBox(height: 8),
           _buildDropdown<int>(
             value: _targetAndroidApi,
-            items: [18, 21, 24, 26, 28, 30, 31, 33].map((api) {
-              final name = _getAndroidVersionName(api);
-              return DropdownMenuItem(
-                value: api,
-                child: Text('API $api ($name)'),
-              );
-            }).toList(),
+            items: const [18, 21, 24, 26, 28, 30, 31, 33],
             onChanged: (value) => setState(() => _targetAndroidApi = value!),
+            itemLabelBuilder: (api) => 'API $api (${_getAndroidVersionName(api)})',
           ),
           _buildHintText('ETC2: API 18+, ASTC: API 21+ 권장'),
           const SizedBox(height: 20),
@@ -267,13 +324,9 @@ class _OnboardingStepperState extends ConsumerState<OnboardingStepper> {
           const SizedBox(height: 8),
           _buildDropdown<int>(
             value: _targetIOSVersion,
-            items: [10, 11, 12, 13, 14, 15, 16, 17].map((ver) {
-              return DropdownMenuItem(
-                value: ver,
-                child: Text('iOS $ver+'),
-              );
-            }).toList(),
+            items: const [10, 11, 12, 13, 14, 15, 16, 17],
             onChanged: (value) => setState(() => _targetIOSVersion = value!),
+            itemLabelBuilder: (ver) => 'iOS $ver+',
           ),
           _buildHintText('ASTC: iOS 8+ (A8 칩) 지원'),
           const SizedBox(height: 20),
@@ -587,13 +640,9 @@ class _OnboardingStepperState extends ConsumerState<OnboardingStepper> {
           const SizedBox(height: 8),
           _buildDropdown<TextureCompressionFormat>(
             value: _androidFormat,
-            items: TextureCompressionFormat.androidFormats.map((format) {
-              return DropdownMenuItem(
-                value: format,
-                child: Text(format.displayName),
-              );
-            }).toList(),
+            items: TextureCompressionFormat.androidFormats,
             onChanged: (value) => setState(() => _androidFormat = value!),
+            itemLabelBuilder: (format) => format.displayName,
           ),
           _buildHintText(_androidFormat.compressionDescription),
           const SizedBox(height: 20),
@@ -603,13 +652,9 @@ class _OnboardingStepperState extends ConsumerState<OnboardingStepper> {
           const SizedBox(height: 8),
           _buildDropdown<TextureCompressionFormat>(
             value: _iosFormat,
-            items: TextureCompressionFormat.iosFormats.map((format) {
-              return DropdownMenuItem(
-                value: format,
-                child: Text(format.displayName),
-              );
-            }).toList(),
+            items: TextureCompressionFormat.iosFormats,
             onChanged: (value) => setState(() => _iosFormat = value!),
+            itemLabelBuilder: (format) => format.displayName,
           ),
           _buildHintText(_iosFormat.compressionDescription),
           const SizedBox(height: 20),
@@ -619,13 +664,9 @@ class _OnboardingStepperState extends ConsumerState<OnboardingStepper> {
           const SizedBox(height: 8),
           _buildDropdown<ASTCBlockSize>(
             value: _astcBlockSize,
-            items: ASTCBlockSize.values.map((size) {
-              return DropdownMenuItem(
-                value: size,
-                child: Text('${size.displayName} - ${size.efficiencyDescription}'),
-              );
-            }).toList(),
+            items: ASTCBlockSize.values,
             onChanged: (value) => setState(() => _astcBlockSize = value!),
+            itemLabelBuilder: (size) => '${size.displayName} - ${size.efficiencyDescription}',
           ),
           _buildHintText('${_astcBlockSize.bitsPerPixel} bpp'),
         ],
@@ -936,30 +977,6 @@ class _OnboardingStepperState extends ConsumerState<OnboardingStepper> {
     );
   }
 
-  // ========== Helper Widgets ==========
-  Widget _buildStepTitle(String title) {
-    return Text(
-      title,
-      style: const TextStyle(
-        fontSize: 18,
-        fontWeight: FontWeight.w600,
-      ),
-    );
-  }
-
-  Widget _buildStepDescription(String description) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 4),
-      child: Text(
-        description,
-        style: TextStyle(
-          fontSize: 13,
-          color: EditorColors.iconDisabled,
-        ),
-      ),
-    );
-  }
-
   Widget _buildSectionLabel(String label) {
     return Text(
       label,
@@ -986,28 +1003,16 @@ class _OnboardingStepperState extends ConsumerState<OnboardingStepper> {
 
   Widget _buildDropdown<T>({
     required T value,
-    required List<DropdownMenuItem<T>> items,
+    required List<T> items,
     required ValueChanged<T?> onChanged,
+    required String Function(T) itemLabelBuilder,
   }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(
-        color: EditorColors.inputBackground,
-        borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: EditorColors.border),
-      ),
-      child: DropdownButton<T>(
-        value: value,
-        items: items,
-        onChanged: onChanged,
-        isExpanded: true,
-        underline: const SizedBox(),
-        dropdownColor: EditorColors.surface,
-        style: TextStyle(
-          fontSize: 13,
-          color: EditorColors.iconDefault,
-        ),
-      ),
+    return EditorDropdown<T>(
+      value: value,
+      items: items,
+      onChanged: onChanged,
+      itemLabelBuilder: itemLabelBuilder,
+      height: 40,
     );
   }
 }

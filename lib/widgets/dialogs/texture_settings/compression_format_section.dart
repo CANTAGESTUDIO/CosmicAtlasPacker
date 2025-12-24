@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../models/texture_compression_settings.dart';
 import '../../../providers/texture_packing_settings_provider.dart';
 import '../../../theme/editor_colors.dart';
+import '../../common/editor_dropdown.dart';
 
 /// 압축 포맷 섹션 위젯
 /// 플랫폼별 텍스처 압축 포맷 설정 UI 제공
@@ -375,46 +376,16 @@ class _ASTCBlockSizeSection extends ConsumerWidget {
           ),
         ),
         const SizedBox(height: 8),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          decoration: BoxDecoration(
-            color: EditorColors.inputBackground,
-            borderRadius: BorderRadius.circular(4),
-            border: Border.all(color: EditorColors.border),
-          ),
-          child: DropdownButton<ASTCBlockSize>(
-            value: settings.astcBlockSize,
-            items: ASTCBlockSize.values.map((size) {
-              return DropdownMenuItem(
-                value: size,
-                child: Row(
-                  children: [
-                    Text(size.displayName),
-                    const SizedBox(width: 8),
-                    Text(
-                      '(${size.bitsPerPixel} bpp)',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: EditorColors.iconDisabled,
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            }).toList(),
-            onChanged: (value) {
-              if (value != null) {
-                ref.read(texturePackingSettingsProvider.notifier).updateASTCBlockSize(value);
-              }
-            },
-            isExpanded: true,
-            underline: const SizedBox(),
-            dropdownColor: EditorColors.surface,
-            style: TextStyle(
-              fontSize: 13,
-              color: EditorColors.iconDefault,
-            ),
-          ),
+        EditorDropdown<ASTCBlockSize>(
+          value: settings.astcBlockSize,
+          items: ASTCBlockSize.values,
+          onChanged: (value) {
+            if (value != null) {
+              ref.read(texturePackingSettingsProvider.notifier).updateASTCBlockSize(value);
+            }
+          },
+          itemLabelBuilder: (size) => '${size.displayName} (${size.bitsPerPixel} bpp)',
+          height: 40,
         ),
         const SizedBox(height: 4),
         Text(
@@ -461,38 +432,14 @@ class _FallbackFormatSection extends ConsumerWidget {
           ],
         ),
         const SizedBox(height: 8),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          decoration: BoxDecoration(
-            color: EditorColors.inputBackground,
-            borderRadius: BorderRadius.circular(4),
-            border: Border.all(color: EditorColors.border),
-          ),
-          child: DropdownButton<TextureCompressionFormat?>(
-            value: settings.fallbackFormat,
-            items: [
-              const DropdownMenuItem(
-                value: null,
-                child: Text('없음 (폴백 비활성화)'),
-              ),
-              ...TextureCompressionFormat.values.map((format) {
-                return DropdownMenuItem(
-                  value: format,
-                  child: Text(format.displayName),
-                );
-              }),
-            ],
-            onChanged: (value) {
-              ref.read(texturePackingSettingsProvider.notifier).updateFallbackFormat(value);
-            },
-            isExpanded: true,
-            underline: const SizedBox(),
-            dropdownColor: EditorColors.surface,
-            style: TextStyle(
-              fontSize: 13,
-              color: EditorColors.iconDefault,
-            ),
-          ),
+        EditorDropdown<TextureCompressionFormat?>(
+          value: settings.fallbackFormat,
+          items: [null, ...TextureCompressionFormat.values],
+          onChanged: (value) {
+            ref.read(texturePackingSettingsProvider.notifier).updateFallbackFormat(value);
+          },
+          itemLabelBuilder: (format) => format?.displayName ?? '없음 (폴백 비활성화)',
+          height: 40,
         ),
       ],
     );
