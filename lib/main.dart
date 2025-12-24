@@ -34,6 +34,8 @@ void main() async {
   );
 
   await windowManager.waitUntilReadyToShow(windowOptions, () async {
+    // Set dark mode for window title bar (macOS/Windows)
+    await windowManager.setBrightness(Brightness.dark);
     await windowManager.maximize();
     await windowManager.show();
     await windowManager.focus();
@@ -44,20 +46,20 @@ void main() async {
 
   runApp(
     const ProviderScope(
-      child: CosmicAtlasPackerApp(),
+      child: CatioAtlasApp(),
     ),
   );
 }
 
-class CosmicAtlasPackerApp extends ConsumerStatefulWidget {
-  const CosmicAtlasPackerApp({super.key});
+class CatioAtlasApp extends ConsumerStatefulWidget {
+  const CatioAtlasApp({super.key});
 
   @override
-  ConsumerState<CosmicAtlasPackerApp> createState() =>
-      _CosmicAtlasPackerAppState();
+  ConsumerState<CatioAtlasApp> createState() =>
+      _CatioAtlasAppState();
 }
 
-class _CosmicAtlasPackerAppState extends ConsumerState<CosmicAtlasPackerApp>
+class _CatioAtlasAppState extends ConsumerState<CatioAtlasApp>
     with WidgetsBindingObserver {
   @override
   void initState() {
@@ -85,7 +87,7 @@ class _CosmicAtlasPackerAppState extends ConsumerState<CosmicAtlasPackerApp>
     final theme = AppTheme.getTheme(themeState.mode, themeState.platformBrightness);
 
     return MaterialApp(
-      title: 'CosmicAtlasPacker',
+      title: 'Catio Atlas',
       debugShowCheckedModeBanner: false,
       theme: theme,
       home: const EditorScreen(),

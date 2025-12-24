@@ -154,10 +154,10 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
             autofocus: true,
             child: DropZoneWrapper(
               child: Scaffold(
-                backgroundColor: Colors.transparent,
+                backgroundColor: EditorColors.surface,
                 body: Column(
                   children: [
-                    // Toolbar
+                    // Toolbar (includes traffic light area on macOS)
                     const EditorToolbar(),
 
                     // Main content area with split panels

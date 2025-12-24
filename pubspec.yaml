@@ -1,4 +1,4 @@
-name: cosmic_atlas_packer
+name: catio_atlas
 description: "Flutter Desktop texture packing editor - Unity Sprite Atlas style"
 publish_to: 'none'
 version: 1.0.0+1

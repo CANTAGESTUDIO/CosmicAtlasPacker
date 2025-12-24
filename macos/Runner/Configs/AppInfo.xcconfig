@@ -5,10 +5,10 @@
 // 'flutter create' template.
 
 // The application's name. By default this is also the title of the Flutter window.
-PRODUCT_NAME = cosmic_atlas_packer
+PRODUCT_NAME = Catio Atlas
 
 // The application's bundle identifier
-PRODUCT_BUNDLE_IDENTIFIER = com.cosmicatlas.cosmicAtlasPacker
+PRODUCT_BUNDLE_IDENTIFIER = com.catioatlas.catioAtlas
 
 // The copyright displayed in application information
-PRODUCT_COPYRIGHT = Copyright © 2025 com.cosmicatlas. All rights reserved.
+PRODUCT_COPYRIGHT = Copyright © 2025 Catio Atlas. All rights reserved.
