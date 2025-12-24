@@ -11,11 +11,17 @@ class AppTheme {
     return ThemeData(
       useMaterial3: true,
       brightness: Brightness.dark,
-      colorScheme: ColorScheme.dark(
+      colorScheme: const ColorScheme.dark(
         primary: EditorColors.primaryDark,
+        onPrimary: Color(0xFF0F0F0F), // --primary-foreground: rgb(15, 15, 15)
         secondary: EditorColors.secondaryDark,
+        onSecondary: Color(0xFF0F0F0F),
         surface: EditorColors.surfaceDark,
+        onSurface: EditorColors.iconDefaultDark,
         error: EditorColors.errorDark,
+        onError: Colors.white,
+        primaryContainer: EditorColors.primaryDark,
+        onPrimaryContainer: Color(0xFF0F0F0F),
       ),
       scaffoldBackgroundColor: EditorColors.backgroundDark,
       appBarTheme: const AppBarTheme(
@@ -68,6 +74,37 @@ class AppTheme {
         inactiveTrackColor: EditorColors.borderDark,
         thumbColor: EditorColors.primaryDark,
         overlayColor: EditorColors.primaryDark.withValues(alpha: 0.2),
+      ),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          backgroundColor: EditorColors.primaryDark,
+          foregroundColor: const Color(0xFF0F0F0F), // dark text on orange
+          disabledBackgroundColor: EditorColors.borderDark,
+          disabledForegroundColor: EditorColors.iconDisabledDark,
+        ),
+      ),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: EditorColors.primaryDark,
+          foregroundColor: const Color(0xFF0F0F0F), // dark text on orange
+          disabledBackgroundColor: EditorColors.borderDark,
+          disabledForegroundColor: EditorColors.iconDisabledDark,
+        ),
+      ),
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(
+          foregroundColor: EditorColors.iconDefaultDark,
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: EditorColors.primaryDark,
+          side: const BorderSide(color: EditorColors.primaryDark),
+        ),
+      ),
+      progressIndicatorTheme: const ProgressIndicatorThemeData(
+        color: EditorColors.primaryDark,
+        linearTrackColor: EditorColors.borderDark,
       ),
       tooltipTheme: TooltipThemeData(
         decoration: BoxDecoration(

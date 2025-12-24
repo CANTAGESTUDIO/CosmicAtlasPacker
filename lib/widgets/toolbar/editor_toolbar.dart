@@ -82,16 +82,6 @@ class EditorToolbar extends ConsumerWidget {
                     ref.read(showGridSliceDialogProvider)?.call();
                   },
           ),
-          _ToolButton(
-            icon: Icons.format_color_reset,
-            tooltip: '배경색 제거 (B)',
-            isEnabled: editorMode != EditorMode.animation,
-            onPressed: editorMode == EditorMode.animation
-                ? null
-                : () {
-                    ref.read(showBackgroundRemoveDialogProvider)?.call();
-                  },
-          ),
 
           // Divider
           _toolbarDivider(),
@@ -269,7 +259,7 @@ class _ToolButton extends StatelessWidget {
   }
 }
 
-/// Editor mode toggle button (Texture Packer / Animation)
+/// Editor mode toggle button (Texture Packing / Sprite Animation)
 class _EditorModeToggle extends StatelessWidget {
   final EditorMode currentMode;
   final ValueChanged<EditorMode> onModeChanged;
@@ -282,30 +272,25 @@ class _EditorModeToggle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 28,
+      height: 30,
       decoration: BoxDecoration(
         color: EditorColors.inputBackground,
-        borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: EditorColors.border, width: 1),
+        borderRadius: BorderRadius.circular(6),
       ),
+      padding: const EdgeInsets.all(2),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           _ModeButton(
             icon: Icons.grid_view_rounded,
-            label: '패커',
+            label: 'Texture Packing',
             tooltip: EditorMode.texturePacker.tooltip,
             isActive: currentMode == EditorMode.texturePacker,
             onPressed: () => onModeChanged(EditorMode.texturePacker),
           ),
-          Container(
-            width: 1,
-            height: 20,
-            color: EditorColors.border,
-          ),
           _ModeButton(
             icon: Icons.animation,
-            label: '애니',
+            label: 'Sprite Animation',
             tooltip: EditorMode.animation.tooltip,
             isActive: currentMode == EditorMode.animation,
             onPressed: () => onModeChanged(EditorMode.animation),
@@ -335,33 +320,33 @@ class _ModeButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return Tooltip(
       message: tooltip,
-      child: Material(
-        color: isActive ? EditorColors.primary.withValues(alpha: 0.15) : Colors.transparent,
-        borderRadius: BorderRadius.circular(3),
-        child: InkWell(
-          onTap: onPressed,
-          borderRadius: BorderRadius.circular(3),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  icon,
-                  size: 14,
-                  color: isActive ? EditorColors.primary : EditorColors.iconDefault,
+      child: GestureDetector(
+        onTap: onPressed,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          decoration: BoxDecoration(
+            color: isActive ? EditorColors.primary : Colors.transparent,
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                size: 14,
+                color: isActive ? const Color(0xFF0F0F0F) : EditorColors.iconDisabled,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
+                  color: isActive ? const Color(0xFF0F0F0F) : EditorColors.iconDisabled,
                 ),
-                const SizedBox(width: 4),
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
-                    color: isActive ? EditorColors.primary : EditorColors.iconDefault,
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),

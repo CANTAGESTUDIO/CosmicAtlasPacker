@@ -350,38 +350,30 @@ class _SpriteListPanelState extends ConsumerState<SpriteListPanel> {
     final itemSize = 72.0 * (zoomLevel / 100.0);
     const spacing = 6.0;
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        // Calculate columns based on available width
-        final availableWidth = constraints.maxWidth - 16; // padding
-        final crossAxisCount = (availableWidth / (itemSize + spacing)).floor().clamp(1, 10);
+    // Use GridView with maxCrossAxisExtent to maintain fixed item sizes
+    return GridView.builder(
+      controller: _scrollController,
+      padding: const EdgeInsets.all(8),
+      gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+        maxCrossAxisExtent: itemSize,
+        mainAxisSpacing: spacing,
+        crossAxisSpacing: spacing,
+        childAspectRatio: 1.0,
+      ),
+      itemCount: sprites.length,
+      itemBuilder: (context, index) {
+        final sprite = sprites[index];
+        final isSelected = selectedIds.contains(sprite.id);
+        final hasDuplicateId = duplicateIds.containsKey(sprite.id);
 
-        // Use GridView instead of ReorderableGridView for now (reorder not yet supported in multiSpriteProvider)
-        return GridView.builder(
-          controller: _scrollController,
-          padding: const EdgeInsets.all(8),
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: crossAxisCount,
-            mainAxisSpacing: spacing,
-            crossAxisSpacing: spacing,
-            childAspectRatio: 1.0,
-          ),
-          itemCount: sprites.length,
-          itemBuilder: (context, index) {
-            final sprite = sprites[index];
-            final isSelected = selectedIds.contains(sprite.id);
-            final hasDuplicateId = duplicateIds.containsKey(sprite.id);
-
-            return SpriteThumbnail(
-              key: ValueKey(sprite.id),
-              sprite: sprite,
-              sourceImage: activeSource.uiImage,
-              isSelected: isSelected,
-              hasDuplicateId: hasDuplicateId,
-              onTap: () => _handleMultiSpriteTap(sprite.id, isSelected, sprites),
-              onDoubleTap: () => _handleMultiSpriteDoubleTap(sprite.id),
-            );
-          },
+        return SpriteThumbnail(
+          key: ValueKey(sprite.id),
+          sprite: sprite,
+          sourceImage: activeSource.uiImage,
+          isSelected: isSelected,
+          hasDuplicateId: hasDuplicateId,
+          onTap: () => _handleMultiSpriteTap(sprite.id, isSelected, sprites),
+          onDoubleTap: () => _handleMultiSpriteDoubleTap(sprite.id),
         );
       },
     );

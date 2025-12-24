@@ -350,7 +350,6 @@ class _BackgroundRemoveDialogState extends State<BackgroundRemoveDialog> {
             value: _tolerance.toDouble(),
             min: 0,
             max: 255,
-            divisions: 51,
             onChanged: (value) => setState(() => _tolerance = value.round()),
           ),
         ),
@@ -522,7 +521,7 @@ class _ColorToggleButton extends StatelessWidget {
         decoration: BoxDecoration(
           color: isSelected
               ? EditorColors.primary.withValues(alpha: 0.15)
-              : EditorColors.inputBackground,
+              : EditorColors.border,
           borderRadius: BorderRadius.circular(4),
         ),
         child: Container(
@@ -562,7 +561,7 @@ class _OptionButton extends StatelessWidget {
         decoration: BoxDecoration(
           color: isSelected
               ? EditorColors.primary.withValues(alpha: 0.15)
-              : EditorColors.inputBackground,
+              : EditorColors.border,
           borderRadius: BorderRadius.circular(4),
         ),
         child: Row(
@@ -631,7 +630,6 @@ class _SliderRow extends StatelessWidget {
               value: value.toDouble(),
               min: min.toDouble(),
               max: max.toDouble(),
-              divisions: max - min,
               onChanged: (v) => onChanged(v.round()),
             ),
           ),

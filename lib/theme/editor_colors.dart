@@ -14,50 +14,50 @@ class EditorColors {
   EditorColors._();
 
   // ============================================================
-  // Dark Theme Colors
+  // Dark Theme Colors (Orange/Amber based)
   // ============================================================
 
   // Primary colors (dark)
-  static const Color primaryDark = Color(0xFF2196F3);
-  static const Color secondaryDark = Color(0xFF4CAF50);
-  static const Color errorDark = Color(0xFFF44336);
-  static const Color warningDark = Color(0xFFFF9800);
+  static const Color primaryDark = Color(0xFFFF781F); // --primary: rgb(255, 120, 31)
+  static const Color secondaryDark = Color(0xFFA64917); // --accent: rgb(166, 73, 23)
+  static const Color errorDark = Color(0xFFEF4444); // --destructive: rgb(239, 68, 68)
+  static const Color warningDark = Color(0xFFFB923C); // --chart-1 variant
 
   // Background colors (dark)
-  static const Color backgroundDark = Color(0xFF1E1E1E);
-  static const Color surfaceDark = Color(0xFF252526);
-  static const Color panelBackgroundDark = Color(0xFF2D2D30);
+  static const Color backgroundDark = Color(0xFF212121); // --background: rgb(33, 33, 33)
+  static const Color surfaceDark = Color(0xFF262626); // --card: rgb(38, 38, 38)
+  static const Color panelBackgroundDark = Color(0xFF2E2E2E); // lighter panel header
 
   // Border and divider (dark)
-  static const Color borderDark = Color(0xFF3C3C3C);
-  static const Color dividerDark = Color(0xFF404040);
+  static const Color borderDark = Color(0xFF3A3A3A); // slider track / button background
+  static const Color dividerDark = Color(0xFF2E2E2E); // --border: rgb(46, 46, 46)
 
   // Input fields (dark)
-  static const Color inputBackgroundDark = Color(0xFF3C3C3C);
+  static const Color inputBackgroundDark = Color(0xFF1C1C1C); // between background and surface
 
   // Icons (dark)
-  static const Color iconDefaultDark = Color(0xFFCCCCCC);
-  static const Color iconActiveDark = Color(0xFF2196F3);
-  static const Color iconDisabledDark = Color(0xFF6E6E6E);
+  static const Color iconDefaultDark = Color(0xFFCABDB4); // --foreground: rgb(202, 189, 180)
+  static const Color iconActiveDark = Color(0xFFFF781F); // --primary: rgb(255, 120, 31)
+  static const Color iconDisabledDark = Color(0xFFA3A3A3); // --muted-foreground: rgb(163, 163, 163)
 
   // Canvas (dark)
   static const Color canvasBackgroundDark = Color(0xFF1A1A1A);
   static const Color gridLineDark = Color(0x40808080);
 
   // Selection (dark)
-  static const Color selectionDark = Color(0xFF2196F3);
-  static const Color selectionFillDark = Color(0xFF2196F3);
-  static const Color selectionBorderDark = Color(0xFFFF9800);
+  static const Color selectionDark = Color(0xFFF59E0B); // --ring: rgb(245, 158, 11)
+  static const Color selectionFillDark = Color(0xFFF59E0B); // --ring: rgb(245, 158, 11)
+  static const Color selectionBorderDark = Color(0xFFFF9D2E); // --accent-foreground: rgb(255, 157, 46)
 
   // Sprite overlay (dark)
-  static const Color spriteOutlineDark = Color(0xFF4CAF50);
-  static const Color spriteFillDark = Color(0xFF4CAF50);
-  static const Color spriteBorderDark = Color(0xFF4CAF50);
-  static const Color selectedSpriteDark = Color(0xFFFF9800);
+  static const Color spriteOutlineDark = Color(0xFFD97706); // --chart-2: rgb(217, 119, 6)
+  static const Color spriteFillDark = Color(0xFFD97706); // --chart-2: rgb(217, 119, 6)
+  static const Color spriteBorderDark = Color(0xFFD97706); // --chart-2: rgb(217, 119, 6)
+  static const Color selectedSpriteDark = Color(0xFFFF9D2E); // --accent-foreground: rgb(255, 157, 46)
 
   // Drag selection (dark)
-  static const Color dragSelectionFillDark = Color(0xFF2196F3);
-  static const Color dragSelectionBorderDark = Color(0xFF64B5F6);
+  static const Color dragSelectionFillDark = Color(0xFFF59E0B); // --ring: rgb(245, 158, 11)
+  static const Color dragSelectionBorderDark = Color(0xFFFBBF24); // --chart-1: rgb(251, 191, 36)
 
   // ============================================================
   // Light Theme Colors

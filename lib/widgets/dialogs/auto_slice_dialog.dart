@@ -89,8 +89,8 @@ class _AutoSliceDialogState extends State<AutoSliceDialog> {
   bool _removeBackground = true;
   int _bgColorIndex = 0;
   int _bgTolerance = 0;
-  int _bgFeatherRadius = 0;
-  bool _bgAntialias = false;
+  int _bgFeatherRadius = 2;
+  bool _bgAntialias = true;
   int _bgAlphaThreshold = 0;
   late List<Color> _cornerColors;
   final _bgRemoverService = const BackgroundRemoverService();
@@ -493,7 +493,6 @@ class _AutoSliceDialogState extends State<AutoSliceDialog> {
             value: _alphaThreshold.toDouble(),
             min: 0,
             max: 255,
-            divisions: 51,
             onChanged: (value) {
               setState(() => _alphaThreshold = value.round());
               _updatePreview();
@@ -852,7 +851,7 @@ class _PresetButton extends StatelessWidget {
         decoration: BoxDecoration(
           color: isSelected
               ? EditorColors.primary.withValues(alpha: 0.15)
-              : EditorColors.inputBackground,
+              : EditorColors.border,
           borderRadius: BorderRadius.circular(4),
           border: Border.all(
             color: isSelected ? EditorColors.primary : EditorColors.border,
@@ -905,7 +904,7 @@ class _OptionButton extends StatelessWidget {
         decoration: BoxDecoration(
           color: isSelected
               ? EditorColors.primary.withValues(alpha: 0.15)
-              : EditorColors.inputBackground,
+              : EditorColors.border,
           borderRadius: BorderRadius.circular(4),
         ),
         child: Row(
@@ -974,7 +973,6 @@ class _SliderRow extends StatelessWidget {
               value: value.toDouble(),
               min: min.toDouble(),
               max: max.toDouble(),
-              divisions: max - min,
               onChanged: (v) => onChanged(v.round()),
             ),
           ),

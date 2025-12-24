@@ -5,9 +5,12 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers/editor_state_provider.dart';
+import '../../providers/multi_image_provider.dart';
 import '../../providers/packing_provider.dart';
 import '../../services/bin_packing_service.dart';
+import '../../services/image_loader_service.dart';
 import '../../theme/editor_colors.dart';
+import '../dialogs/background_remove_dialog.dart';
 
 /// Atlas Preview Panel - displays packed atlas result with interactive zoom/pan
 class AtlasPreviewPanel extends ConsumerStatefulWidget {
@@ -517,6 +520,15 @@ class _AtlasPreviewPanelState extends ConsumerState<AtlasPreviewPanel> {
               onTap: () => notifier.toggleTightPacking(),
             ),
 
+            // --- Background Remove Button ---
+            const SizedBox(height: 12),
+            Container(
+              height: 1,
+              color: EditorColors.border.withValues(alpha: 0.5),
+            ),
+            const SizedBox(height: 10),
+            _buildBgRemoveButton(context, ref),
+
             // --- Efficiency ---
             const SizedBox(height: 12),
             Container(
@@ -599,6 +611,67 @@ class _AtlasPreviewPanelState extends ConsumerState<AtlasPreviewPanel> {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBgRemoveButton(BuildContext context, WidgetRef ref) {
+    final atlasSources = ref.watch(atlasSourcesProvider);
+    final hasSource = atlasSources.isNotEmpty;
+
+    return GestureDetector(
+      onTap: hasSource
+          ? () async {
+              final source = atlasSources.first;
+              final rawImage = source.effectiveRawImage;
+              if (rawImage == null) return;
+
+              final result = await BackgroundRemoveDialog.show(
+                context,
+                image: rawImage,
+              );
+
+              if (result != null) {
+                // Convert to ui.Image and update the source
+                final imageLoader = ImageLoaderService();
+                final uiImage = await imageLoader.convertToUiImage(result);
+                if (uiImage != null) {
+                  ref.read(multiImageProvider.notifier).updateProcessedImage(
+                    source.id,
+                    processedRaw: result,
+                    processedUi: uiImage,
+                  );
+                }
+              }
+            }
+          : null,
+      child: MouseRegion(
+        cursor: hasSource ? SystemMouseCursors.click : SystemMouseCursors.basic,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: EditorColors.border,
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.format_color_reset,
+                size: 14,
+                color: hasSource ? EditorColors.iconDefault : EditorColors.iconDisabled,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                '배경색 제거',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: hasSource ? EditorColors.iconDefault : EditorColors.iconDisabled,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

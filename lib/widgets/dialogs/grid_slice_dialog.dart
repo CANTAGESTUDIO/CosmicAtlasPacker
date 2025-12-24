@@ -655,7 +655,7 @@ class _OptionButton extends StatelessWidget {
         decoration: BoxDecoration(
           color: isSelected
               ? EditorColors.primary.withValues(alpha: 0.15)
-              : EditorColors.inputBackground,
+              : EditorColors.border,
           borderRadius: BorderRadius.circular(4),
         ),
         child: Row(
@@ -724,7 +724,6 @@ class _SliderRow extends StatelessWidget {
               value: value.toDouble().clamp(min.toDouble(), max.toDouble()),
               min: min.toDouble(),
               max: max.toDouble(),
-              divisions: max - min > 0 ? max - min : 1,
               onChanged: (v) => onChanged(v.round()),
             ),
           ),

@@ -10,7 +10,7 @@ class ThemeState {
   final Brightness platformBrightness;
 
   const ThemeState({
-    this.mode = EditorThemeMode.system,
+    this.mode = EditorThemeMode.dark,
     this.platformBrightness = Brightness.dark,
   });
 
