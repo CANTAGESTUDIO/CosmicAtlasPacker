@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:window_manager/window_manager.dart';
 import 'package:image/image.dart' as img;
 import 'package:multi_split_view/multi_split_view.dart';
 
@@ -260,205 +261,284 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
 
   List<PlatformMenu> _buildMenus(BuildContext context) {
     final showGrid = ref.watch(showGridProvider);
-    final themeMode = ref.watch(themeModeProvider);
 
     return [
+      // ============================================================
+      // App Menu (Catio Atlas) - macOS HIG: 앱 메뉴는 첫 번째
+      // ============================================================
+      PlatformMenu(
+        label: 'Catio Atlas',
+        menus: [
+          // About 그룹
+          PlatformMenuItemGroup(
+            members: [
+              PlatformMenuItem(
+                label: 'About Catio Atlas',
+                onSelected: () {
+                  showAboutDialog(
+                    context: context,
+                    applicationName: 'Catio Atlas',
+                    applicationVersion: '1.0.0 (POC)',
+                    applicationLegalese: '© 2025 VACOZ',
+                  );
+                },
+              ),
+            ],
+          ),
+          // Settings 그룹
+          PlatformMenuItemGroup(
+            members: [
+              PlatformMenuItem(
+                label: 'Settings...',
+                shortcut: const SingleActivator(LogicalKeyboardKey.comma, meta: true),
+                onSelected: () => _showProjectSettingsDialog(),
+              ),
+            ],
+          ),
+          // Quit 그룹
+          PlatformMenuItemGroup(
+            members: [
+              PlatformMenuItem(
+                label: 'Quit Catio Atlas',
+                shortcut: const SingleActivator(LogicalKeyboardKey.keyQ, meta: true),
+                onSelected: () => _quitApp(),
+              ),
+            ],
+          ),
+        ],
+      ),
+
+      // ============================================================
+      // File Menu - 프로젝트 및 파일 관련
+      // ============================================================
       PlatformMenu(
         label: 'File',
         menus: [
-          PlatformMenuItem(
-            label: 'New Project',
-            shortcut:
-                const SingleActivator(LogicalKeyboardKey.keyN, meta: true),
-            onSelected: () => _newProject(),
+          // New/Open 그룹
+          PlatformMenuItemGroup(
+            members: [
+              PlatformMenuItem(
+                label: 'New Project',
+                shortcut: const SingleActivator(LogicalKeyboardKey.keyN, meta: true),
+                onSelected: () => _newProject(),
+              ),
+              PlatformMenuItem(
+                label: 'Open Project...',
+                shortcut: const SingleActivator(LogicalKeyboardKey.keyO, meta: true),
+                onSelected: () => _openProject(),
+              ),
+            ],
           ),
-          PlatformMenuItem(
-            label: 'Open Project...',
-            shortcut:
-                const SingleActivator(LogicalKeyboardKey.keyO, meta: true, shift: true),
-            onSelected: () => _openProject(),
+          // Save 그룹
+          PlatformMenuItemGroup(
+            members: [
+              PlatformMenuItem(
+                label: 'Save',
+                shortcut: const SingleActivator(LogicalKeyboardKey.keyS, meta: true),
+                onSelected: () => _saveProject(),
+              ),
+              PlatformMenuItem(
+                label: 'Save As...',
+                shortcut: const SingleActivator(LogicalKeyboardKey.keyS, meta: true, shift: true),
+                onSelected: () => _saveProjectAs(),
+              ),
+            ],
           ),
-          PlatformMenuItem(
-            label: 'Save Project',
-            shortcut:
-                const SingleActivator(LogicalKeyboardKey.keyS, meta: true),
-            onSelected: () => _saveProject(),
-          ),
-          PlatformMenuItem(
-            label: 'Save Project As...',
-            shortcut:
-                const SingleActivator(LogicalKeyboardKey.keyS, meta: true, shift: true),
-            onSelected: () => _saveProjectAs(),
-          ),
-          PlatformMenuItem(
-            label: 'Open Images...',
-            shortcut:
-                const SingleActivator(LogicalKeyboardKey.keyO, meta: true),
-            onSelected: () => _openImages(),
-          ),
-          PlatformMenuItem(
-            label: 'Export Atlas...',
-            shortcut:
-                const SingleActivator(LogicalKeyboardKey.keyE, meta: true),
-            onSelected: () => _exportAtlas(),
+          // Import/Export 그룹
+          PlatformMenuItemGroup(
+            members: [
+              PlatformMenuItem(
+                label: 'Import Images...',
+                shortcut: const SingleActivator(LogicalKeyboardKey.keyI, meta: true),
+                onSelected: () => _openImages(),
+              ),
+              PlatformMenuItem(
+                label: 'Export Atlas...',
+                shortcut: const SingleActivator(LogicalKeyboardKey.keyE, meta: true),
+                onSelected: () => _exportAtlas(),
+              ),
+            ],
           ),
         ],
       ),
+
+      // ============================================================
+      // Edit Menu - 편집 관련
+      // ============================================================
       PlatformMenu(
         label: 'Edit',
         menus: [
-          PlatformMenuItem(
-            label: _getUndoLabel(),
-            shortcut:
-                const SingleActivator(LogicalKeyboardKey.keyZ, meta: true),
-            onSelected: ref.read(canUndoProvider) ? () => _undo() : null,
+          // Undo/Redo 그룹
+          PlatformMenuItemGroup(
+            members: [
+              PlatformMenuItem(
+                label: _getUndoLabel(),
+                shortcut: const SingleActivator(LogicalKeyboardKey.keyZ, meta: true),
+                onSelected: ref.read(canUndoProvider) ? () => _undo() : null,
+              ),
+              PlatformMenuItem(
+                label: _getRedoLabel(),
+                shortcut: const SingleActivator(LogicalKeyboardKey.keyZ, meta: true, shift: true),
+                onSelected: ref.read(canRedoProvider) ? () => _redo() : null,
+              ),
+            ],
           ),
-          PlatformMenuItem(
-            label: _getRedoLabel(),
-            shortcut: const SingleActivator(LogicalKeyboardKey.keyZ,
-                meta: true, shift: true),
-            onSelected: ref.read(canRedoProvider) ? () => _redo() : null,
+          // Selection 그룹
+          PlatformMenuItemGroup(
+            members: [
+              PlatformMenuItem(
+                label: 'Select All',
+                shortcut: const SingleActivator(LogicalKeyboardKey.keyA, meta: true),
+                onSelected: () => _selectAll(),
+              ),
+              PlatformMenuItem(
+                label: 'Deselect All',
+                shortcut: const SingleActivator(LogicalKeyboardKey.keyA, meta: true, shift: true),
+                onSelected: () => _deselectAll(),
+              ),
+            ],
           ),
-          PlatformMenuItem(
-            label: 'Select All',
-            shortcut:
-                const SingleActivator(LogicalKeyboardKey.keyA, meta: true),
-            onSelected: () => _selectAll(),
-          ),
-          PlatformMenuItem(
-            label: 'Delete Selected',
-            shortcut: const SingleActivator(LogicalKeyboardKey.backspace),
-            onSelected: () => _deleteSelected(),
+          // Delete 그룹
+          PlatformMenuItemGroup(
+            members: [
+              PlatformMenuItem(
+                label: 'Delete',
+                shortcut: const SingleActivator(LogicalKeyboardKey.backspace),
+                onSelected: () => _deleteSelected(),
+              ),
+            ],
           ),
         ],
       ),
+
+      // ============================================================
+      // View Menu - 뷰 관련 (줌, 그리드, 테마)
+      // ============================================================
       PlatformMenu(
         label: 'View',
         menus: [
-          PlatformMenuItem(
-            label: showGrid ? 'Hide Grid' : 'Show Grid',
-            shortcut:
-                const SingleActivator(LogicalKeyboardKey.keyG, meta: true),
-            onSelected: () {
-              ref.read(showGridProvider.notifier).state = !showGrid;
-            },
-          ),
-          PlatformMenuItem(
-            label: 'Zoom In',
-            shortcut:
-                const SingleActivator(LogicalKeyboardKey.equal, meta: true),
-            onSelected: () {
-              final current = ref.read(zoomLevelProvider);
-              if (current < 800) {
-                ref.read(zoomLevelProvider.notifier).state = current + 25;
-              }
-            },
-          ),
-          PlatformMenuItem(
-            label: 'Zoom Out',
-            shortcut:
-                const SingleActivator(LogicalKeyboardKey.minus, meta: true),
-            onSelected: () {
-              final current = ref.read(zoomLevelProvider);
-              if (current > 25) {
-                ref.read(zoomLevelProvider.notifier).state = current - 25;
-              }
-            },
-          ),
-          PlatformMenuItem(
-            label: 'Reset Zoom',
-            shortcut:
-                const SingleActivator(LogicalKeyboardKey.digit0, meta: true),
-            onSelected: () {
-              ref.read(zoomLevelProvider.notifier).state = 100;
-            },
-          ),
-          PlatformMenu(
-            label: 'Theme',
-            menus: [
+          // Zoom 그룹
+          PlatformMenuItemGroup(
+            members: [
               PlatformMenuItem(
-                label: themeMode == EditorThemeMode.system ? '✓ System' : '  System',
-                onSelected: () {
-                  ref.read(themeProvider.notifier).setSystemTheme();
-                },
+                label: 'Zoom In',
+                shortcut: const SingleActivator(LogicalKeyboardKey.equal, meta: true),
+                onSelected: () => _zoomIn(),
               ),
               PlatformMenuItem(
-                label: themeMode == EditorThemeMode.light ? '✓ Light' : '  Light',
-                onSelected: () {
-                  ref.read(themeProvider.notifier).setLightTheme();
-                },
+                label: 'Zoom Out',
+                shortcut: const SingleActivator(LogicalKeyboardKey.minus, meta: true),
+                onSelected: () => _zoomOut(),
               ),
               PlatformMenuItem(
-                label: themeMode == EditorThemeMode.dark ? '✓ Dark' : '  Dark',
+                label: 'Actual Size',
+                shortcut: const SingleActivator(LogicalKeyboardKey.digit0, meta: true),
+                onSelected: () => _resetZoom(),
+              ),
+              PlatformMenuItem(
+                label: 'Fit to Window',
+                shortcut: const SingleActivator(LogicalKeyboardKey.digit1, meta: true),
+                onSelected: () => _fitToWindow(),
+              ),
+            ],
+          ),
+          // Display 그룹
+          PlatformMenuItemGroup(
+            members: [
+              PlatformMenuItem(
+                label: showGrid ? 'Hide Grid' : 'Show Grid',
+                shortcut: const SingleActivator(LogicalKeyboardKey.keyG, meta: true),
                 onSelected: () {
-                  ref.read(themeProvider.notifier).setDarkTheme();
+                  ref.read(showGridProvider.notifier).state = !showGrid;
                 },
               ),
             ],
           ),
         ],
       ),
+
+      // ============================================================
+      // Tools Menu - 도구 및 슬라이싱
+      // ============================================================
       PlatformMenu(
         label: 'Tools',
         menus: [
-          PlatformMenuItem(
-            label: 'Select Tool',
-            shortcut: const SingleActivator(LogicalKeyboardKey.keyV),
-            onSelected: () {
-              ref.read(toolModeProvider.notifier).state = ToolMode.select;
-            },
+          // Tool selection 그룹
+          PlatformMenuItemGroup(
+            members: [
+              PlatformMenuItem(
+                label: 'Select Tool',
+                shortcut: const SingleActivator(LogicalKeyboardKey.keyV),
+                onSelected: () => ref.read(toolModeProvider.notifier).state = ToolMode.select,
+              ),
+              PlatformMenuItem(
+                label: 'Rectangle Slice Tool',
+                shortcut: const SingleActivator(LogicalKeyboardKey.keyR),
+                onSelected: () => ref.read(toolModeProvider.notifier).state = ToolMode.rectSlice,
+              ),
+            ],
           ),
-          PlatformMenuItem(
-            label: 'Rectangle Slice',
-            shortcut: const SingleActivator(LogicalKeyboardKey.keyR),
-            onSelected: () {
-              ref.read(toolModeProvider.notifier).state = ToolMode.rectSlice;
-            },
+          // Slicing 그룹
+          PlatformMenuItemGroup(
+            members: [
+              PlatformMenuItem(
+                label: 'Auto Slice...',
+                shortcut: const SingleActivator(LogicalKeyboardKey.keyA),
+                onSelected: () => _showAutoSliceDialog(),
+              ),
+              PlatformMenuItem(
+                label: 'Grid Slice...',
+                shortcut: const SingleActivator(LogicalKeyboardKey.keyG),
+                onSelected: () => _showGridSliceDialog(),
+              ),
+            ],
           ),
-          PlatformMenuItem(
-            label: 'Auto Slice...',
-            shortcut: const SingleActivator(LogicalKeyboardKey.keyA),
-            onSelected: () => _showAutoSliceDialog(),
-          ),
-          PlatformMenuItem(
-            label: 'Grid Slice...',
-            shortcut: const SingleActivator(LogicalKeyboardKey.keyG),
-            onSelected: () => _showGridSliceDialog(),
-          ),
-          PlatformMenuItem(
-            label: 'Atlas Settings...',
-            shortcut: const SingleActivator(LogicalKeyboardKey.comma, meta: true, shift: true),
-            onSelected: () => _showAtlasSettingsDialog(),
-          ),
-          PlatformMenuItem(
-            label: 'Texture Settings...',
-            shortcut: const SingleActivator(LogicalKeyboardKey.keyT, meta: true, shift: true),
-            onSelected: () => _showTextureSettingsDialog(),
+          // Settings 그룹
+          PlatformMenuItemGroup(
+            members: [
+              PlatformMenuItem(
+                label: 'Atlas Settings...',
+                shortcut: const SingleActivator(LogicalKeyboardKey.comma, meta: true, shift: true),
+                onSelected: () => _showAtlasSettingsDialog(),
+              ),
+              PlatformMenuItem(
+                label: 'Texture Settings...',
+                shortcut: const SingleActivator(LogicalKeyboardKey.keyT, meta: true, shift: true),
+                onSelected: () => _showTextureSettingsDialog(),
+              ),
+            ],
           ),
         ],
       ),
+
+      // ============================================================
+      // Window Menu - macOS 표준 윈도우 메뉴
+      // ============================================================
       PlatformMenu(
-        label: 'CosmicAtlasPacker',
+        label: 'Window',
         menus: [
           PlatformMenuItem(
-            label: 'Settings...',
-            shortcut: const SingleActivator(LogicalKeyboardKey.comma, meta: true),
-            onSelected: () => _showProjectSettingsDialog(),
+            label: 'Minimize',
+            shortcut: const SingleActivator(LogicalKeyboardKey.keyM, meta: true),
+            onSelected: () => _minimizeWindow(),
+          ),
+          PlatformMenuItem(
+            label: 'Zoom',
+            onSelected: () => _zoomWindow(),
           ),
         ],
       ),
+
+      // ============================================================
+      // Help Menu - 도움말
+      // ============================================================
       PlatformMenu(
         label: 'Help',
         menus: [
           PlatformMenuItem(
-            label: 'About CosmicAtlasPacker',
+            label: 'Catio Atlas Help',
             onSelected: () {
-              showAboutDialog(
-                context: context,
-                applicationName: 'CosmicAtlasPacker',
-                applicationVersion: '1.0.0 (POC)',
-                applicationLegalese: '© 2025 VACOZ',
-              );
+              // TODO: Open help documentation
             },
           ),
         ],
@@ -1381,6 +1461,35 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
 
   void _setTool(ToolMode mode) {
     ref.read(toolModeProvider.notifier).state = mode;
+  }
+
+  // ============================================================
+  // Window Methods
+  // ============================================================
+
+  Future<void> _quitApp() async {
+    // Check for unsaved changes before quitting
+    final isDirty = ref.read(projectDirtyProvider);
+    if (isDirty) {
+      _showUnsavedChangesDialog(() {
+        SystemNavigator.pop();
+      });
+    } else {
+      SystemNavigator.pop();
+    }
+  }
+
+  Future<void> _minimizeWindow() async {
+    await windowManager.minimize();
+  }
+
+  Future<void> _zoomWindow() async {
+    final isMaximized = await windowManager.isMaximized();
+    if (isMaximized) {
+      await windowManager.unmaximize();
+    } else {
+      await windowManager.maximize();
+    }
   }
 }
 
