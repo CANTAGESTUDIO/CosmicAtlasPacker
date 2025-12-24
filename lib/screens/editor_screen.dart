@@ -125,6 +125,13 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Listen for sprite changes and mark project as dirty
+    ref.listen<MultiSpriteState>(multiSpriteProvider, (previous, next) {
+      if (previous != null && previous.spritesBySource != next.spritesBySource) {
+        ref.read(projectDirtyProvider.notifier).state = true;
+      }
+    });
+
     // Listen for activeSource changes and sync to sourceImageProvider
     // This handles: new image selected, image content changed (background removal), image removed
     ref.listen<LoadedSourceImage?>(activeSourceProvider, (previous, next) {

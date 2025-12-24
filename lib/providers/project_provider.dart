@@ -20,6 +20,25 @@ final projectDirtyProvider = StateProvider<bool>((ref) => false);
 /// Last saved path provider
 final lastSavedPathProvider = StateProvider<String?>((ref) => null);
 
+/// Project display name provider (shows filename or "Untitled")
+final projectDisplayNameProvider = Provider<String>((ref) {
+  final lastPath = ref.watch(lastSavedPathProvider);
+  if (lastPath == null) {
+    return 'Untitled';
+  }
+  // Extract filename without extension
+  final fileName = lastPath.split('/').last;
+  final nameWithoutExt = fileName.replaceAll('.${ProjectService.fileExtension}', '');
+  return nameWithoutExt;
+});
+
+/// Full project title with dirty indicator
+final projectTitleProvider = Provider<String>((ref) {
+  final displayName = ref.watch(projectDisplayNameProvider);
+  final isDirty = ref.watch(projectDirtyProvider);
+  return isDirty ? '$displayName*' : displayName;
+});
+
 /// Project state notifier
 class ProjectNotifier extends StateNotifier<AtlasProject> {
   ProjectNotifier() : super(AtlasProject(meta: ProjectMeta.now()));

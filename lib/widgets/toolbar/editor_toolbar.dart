@@ -4,11 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:window_manager/window_manager.dart';
 
-import '../../core/constants/app_constants.dart';
 import '../../models/enums/editor_mode.dart';
 import '../../models/enums/tool_mode.dart';
 import '../../providers/editor_state_provider.dart';
 import '../../providers/export_provider.dart';
+import '../../providers/project_provider.dart';
 import '../../theme/editor_colors.dart';
 import '../dialogs/export_dialog.dart';
 
@@ -57,16 +57,25 @@ class EditorToolbar extends ConsumerWidget {
             // macOS traffic light buttons space
             if (Platform.isMacOS) const SizedBox(width: 70),
             if (!Platform.isMacOS) const SizedBox(width: 8),
-            // Project name
-            Text(
-              AppConstants.appName,
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w500,
-                color: EditorColors.iconDisabled,
+            // Project name with dirty indicator
+            _ProjectTitle(),
+            const Spacer(),
+            // Mode Shop button
+            OutlinedButton.icon(
+              onPressed: () => _showModeShop(context),
+              icon: const Icon(Icons.store_outlined, size: 16),
+              label: const Text('Mode Shop'),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                minimumSize: const Size(100, 24),
+                foregroundColor: EditorColors.primary,
+                side: BorderSide(color: EditorColors.primary.withValues(alpha: 0.5)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(4),
+                ),
               ),
             ),
-            const Spacer(),
+            const SizedBox(width: 8),
             // Export button
             FilledButton.icon(
               onPressed: () => _exportAtlas(context, ref),
@@ -229,6 +238,121 @@ class EditorToolbar extends ConsumerWidget {
     );
   }
 
+  void _showModeShop(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: EditorColors.surface,
+        title: Row(
+          children: [
+            Icon(Icons.store_outlined, color: EditorColors.primary, size: 24),
+            const SizedBox(width: 8),
+            const Text('Mode Shop'),
+          ],
+        ),
+        content: SizedBox(
+          width: 400,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '추가 에디터 모드를 구입할 수 있습니다.',
+                style: TextStyle(color: EditorColors.iconDefault),
+              ),
+              const SizedBox(height: 16),
+              _buildModeShopItem(
+                icon: Icons.text_fields,
+                title: 'Sprite Font Editor',
+                description: '비트맵 폰트를 제작하고 내보낼 수 있는 모드',
+                price: 'Coming Soon',
+                isAvailable: false,
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('닫기'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildModeShopItem({
+    required IconData icon,
+    required String title,
+    required String description,
+    required String price,
+    required bool isAvailable,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: EditorColors.inputBackground,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: EditorColors.border),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: EditorColors.primary.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, color: EditorColors.primary, size: 24),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: EditorColors.iconDefault,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  description,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: EditorColors.iconDisabled,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: isAvailable
+                  ? EditorColors.primary
+                  : EditorColors.iconDisabled.withValues(alpha: 0.3),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Text(
+              price,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: isAvailable ? Colors.black : EditorColors.iconDisabled,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _exportAtlas(BuildContext context, WidgetRef ref) async {
     final canExport = ref.read(canExportProvider);
 
@@ -342,6 +466,14 @@ class _EditorModeToggle extends StatelessWidget {
             isActive: currentMode == EditorMode.animation,
             onPressed: () => onModeChanged(EditorMode.animation),
           ),
+          _ModeButton(
+            icon: Icons.text_fields,
+            label: 'Sprite Font',
+            tooltip: 'Sprite Font Editor (Coming Soon)',
+            isActive: false,
+            isEnabled: false,
+            onPressed: () {},
+          ),
         ],
       ),
     );
@@ -353,6 +485,7 @@ class _ModeButton extends StatelessWidget {
   final String label;
   final String tooltip;
   final bool isActive;
+  final bool isEnabled;
   final VoidCallback onPressed;
 
   const _ModeButton({
@@ -360,20 +493,35 @@ class _ModeButton extends StatelessWidget {
     required this.label,
     required this.tooltip,
     required this.isActive,
+    this.isEnabled = true,
     required this.onPressed,
   });
 
   @override
   Widget build(BuildContext context) {
+    final Color textColor;
+    final Color bgColor;
+
+    if (!isEnabled) {
+      textColor = EditorColors.iconDisabled.withValues(alpha: 0.4);
+      bgColor = Colors.transparent;
+    } else if (isActive) {
+      textColor = const Color(0xFF0F0F0F);
+      bgColor = EditorColors.primary;
+    } else {
+      textColor = EditorColors.iconDisabled;
+      bgColor = Colors.transparent;
+    }
+
     return Tooltip(
       message: tooltip,
       child: GestureDetector(
-        onTap: onPressed,
+        onTap: isEnabled ? onPressed : null,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 150),
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
           decoration: BoxDecoration(
-            color: isActive ? EditorColors.primary : Colors.transparent,
+            color: bgColor,
             borderRadius: BorderRadius.circular(4),
           ),
           child: Row(
@@ -382,7 +530,7 @@ class _ModeButton extends StatelessWidget {
               Icon(
                 icon,
                 size: 14,
-                color: isActive ? const Color(0xFF0F0F0F) : EditorColors.iconDisabled,
+                color: textColor,
               ),
               const SizedBox(width: 6),
               Text(
@@ -390,13 +538,36 @@ class _ModeButton extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w500,
-                  color: isActive ? const Color(0xFF0F0F0F) : EditorColors.iconDisabled,
+                  color: textColor,
                 ),
               ),
             ],
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Project title widget that shows name and dirty indicator
+class _ProjectTitle extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final projectTitle = ref.watch(projectTitleProvider);
+    final isDirty = ref.watch(projectDirtyProvider);
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          projectTitle,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w500,
+            color: isDirty ? EditorColors.iconDefault : EditorColors.iconDisabled,
+          ),
+        ),
+      ],
     );
   }
 }

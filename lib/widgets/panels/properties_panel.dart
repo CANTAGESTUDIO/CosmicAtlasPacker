@@ -22,15 +22,16 @@ class PropertiesPanel extends ConsumerWidget {
     final multiSpriteState = ref.watch(multiSpriteProvider);
     final selectedSprites = multiSpriteState.selectedSprites;
 
+    Widget content;
     if (selectedSprites.isEmpty) {
-      return const _EmptyState();
+      content = const _EmptyState();
+    } else if (selectedSprites.length == 1) {
+      content = _SingleSpriteProperties(sprite: selectedSprites.first);
+    } else {
+      content = _MultiSpriteProperties(sprites: selectedSprites);
     }
 
-    if (selectedSprites.length == 1) {
-      return _SingleSpriteProperties(sprite: selectedSprites.first);
-    }
-
-    return _MultiSpriteProperties(sprites: selectedSprites);
+    return content;
   }
 }
 
