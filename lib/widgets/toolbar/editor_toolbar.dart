@@ -1,6 +1,10 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:window_manager/window_manager.dart';
 
+import '../../core/constants/app_constants.dart';
 import '../../models/enums/editor_mode.dart';
 import '../../models/enums/tool_mode.dart';
 import '../../providers/editor_state_provider.dart';
@@ -8,28 +12,101 @@ import '../../providers/export_provider.dart';
 import '../../theme/editor_colors.dart';
 import '../dialogs/export_dialog.dart';
 
-/// Editor Toolbar - tool mode selection and zoom controls
+/// Editor Toolbar - 2-row layout
+/// Row 1: Traffic lights + Project name (title bar)
+/// Row 2: Tool buttons
 class EditorToolbar extends ConsumerWidget {
   const EditorToolbar({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final editorMode = ref.watch(editorModeProvider);
-    final currentTool = ref.watch(toolModeProvider);
-    final showGrid = ref.watch(showGridProvider);
-    final zoomLevel = ref.watch(zoomLevelProvider);
-
     return Container(
-      height: 40,
       decoration: BoxDecoration(
         color: EditorColors.surface,
         border: Border(
           bottom: BorderSide(color: EditorColors.divider, width: 1),
         ),
       ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Row 1: Title bar (traffic lights + project name + export)
+          _buildTitleBar(context, ref),
+          // Row 2: Tool buttons
+          _buildToolBar(context, ref),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTitleBar(BuildContext context, WidgetRef ref) {
+    return GestureDetector(
+      onPanStart: (_) => windowManager.startDragging(),
+      onDoubleTap: () async {
+        if (await windowManager.isMaximized()) {
+          windowManager.unmaximize();
+        } else {
+          windowManager.maximize();
+        }
+      },
+      child: Container(
+        height: 28,
+        color: EditorColors.surface,
+        child: Row(
+          children: [
+            // macOS traffic light buttons space
+            if (Platform.isMacOS) const SizedBox(width: 70),
+            if (!Platform.isMacOS) const SizedBox(width: 8),
+            // Project name
+            Text(
+              AppConstants.appName,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+                color: EditorColors.iconDisabled,
+              ),
+            ),
+            const Spacer(),
+            // Export button
+            FilledButton.icon(
+              onPressed: () => _exportAtlas(context, ref),
+              icon: const Icon(Icons.file_download_outlined, size: 16),
+              label: const Text('Export'),
+              style: FilledButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                minimumSize: const Size(80, 24),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildToolBar(BuildContext context, WidgetRef ref) {
+    final editorMode = ref.watch(editorModeProvider);
+    final currentTool = ref.watch(toolModeProvider);
+    final showGrid = ref.watch(showGridProvider);
+    final zoomLevel = ref.watch(zoomLevelProvider);
+
+    return Container(
+      height: 36,
+      padding: const EdgeInsets.symmetric(horizontal: 8),
       child: Row(
         children: [
-          const SizedBox(width: 8),
+          // App icon
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: Image.asset(
+              'assets/images/app_icon.png',
+              width: 20,
+              height: 20,
+            ),
+          ),
           // Editor mode toggle (Texture Packer / Animation)
           _EditorModeToggle(
             currentMode: editorMode,
@@ -94,10 +171,8 @@ class EditorToolbar extends ConsumerWidget {
             onPressed: zoomLevel <= ZoomPresets.min
                 ? null
                 : () {
-                    // Use zoomLevelProvider as the source of truth
                     final currentPercent = ref.read(zoomLevelProvider);
                     final target = ZoomPresets.zoomOut(currentPercent);
-                    // Apply zoom via callback (SourceImageViewer will update provider)
                     final setZoom = ref.read(setZoomCallbackProvider);
                     setZoom?.call(target);
                   },
@@ -121,10 +196,8 @@ class EditorToolbar extends ConsumerWidget {
             onPressed: zoomLevel >= ZoomPresets.max
                 ? null
                 : () {
-                    // Use zoomLevelProvider as the source of truth
                     final currentPercent = ref.read(zoomLevelProvider);
                     final target = ZoomPresets.zoomIn(currentPercent);
-                    // Apply zoom via callback (SourceImageViewer will update provider)
                     final setZoom = ref.read(setZoomCallbackProvider);
                     setZoom?.call(target);
                   },
@@ -142,31 +215,6 @@ class EditorToolbar extends ConsumerWidget {
             onPressed: () =>
                 ref.read(showGridProvider.notifier).state = !showGrid,
           ),
-
-          const Spacer(),
-
-          // Export button
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            child: FilledButton.icon(
-              onPressed: () => _exportAtlas(context, ref),
-              icon: Transform.translate(
-                offset: const Offset(0, -1),
-                child: const Icon(Icons.file_download_outlined, size: 18),
-              ),
-              label: Transform.translate(
-                offset: const Offset(-3, -1),
-                child: const Text('Export'),
-              ),
-              style: FilledButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                minimumSize: const Size(100, 32),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(4),
-                ),
-              ),
-            ),
-          ),
         ],
       ),
     );
@@ -175,7 +223,7 @@ class EditorToolbar extends ConsumerWidget {
   Widget _toolbarDivider() {
     return Container(
       width: 1,
-      height: 24,
+      height: 20,
       margin: const EdgeInsets.symmetric(horizontal: 8),
       color: EditorColors.divider,
     );
@@ -196,7 +244,6 @@ class EditorToolbar extends ConsumerWidget {
       return;
     }
 
-    // ExportDialog를 표시하고 결과를 받음
     final success = await ExportDialog.show(context);
 
     if (!context.mounted) return;

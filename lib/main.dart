@@ -25,17 +25,15 @@ void main() async {
   // Initialize window manager first
   await windowManager.ensureInitialized();
 
-  // Configure window options
+  // Configure window options - use hidden titlebar for custom titlebar
   const windowOptions = WindowOptions(
     minimumSize: Size(1024, 768),
     center: true,
     skipTaskbar: false,
-    titleBarStyle: TitleBarStyle.normal,
+    titleBarStyle: TitleBarStyle.hidden,
   );
 
   await windowManager.waitUntilReadyToShow(windowOptions, () async {
-    // Set dark mode for window title bar (macOS/Windows)
-    await windowManager.setBrightness(Brightness.dark);
     await windowManager.maximize();
     await windowManager.show();
     await windowManager.focus();
