@@ -868,3 +868,33 @@ final imageGroupsProvider = Provider<Map<String, ImageGroup>>((ref) {
 final ungroupedSourcesProvider = Provider<List<LoadedSourceImage>>((ref) {
   return ref.watch(multiImageProvider).ungroupedSources;
 });
+
+/// 선택된 소스들이 머지 가능한지 확인
+/// - 2개 이상 선택 필수
+/// - 모두 같은 그룹이면 false (이미 머지됨)
+final canMergeSelectedSourcesProvider = Provider<bool>((ref) {
+  final state = ref.watch(multiImageProvider);
+  final selectedIds = state.selectedSourceIds;
+
+  // 2개 미만이면 머지 불가
+  if (selectedIds.length < 2) return false;
+
+  // 선택된 소스들의 그룹 확인
+  String? firstGroupId;
+  bool allSameGroup = true;
+
+  for (final id in selectedIds) {
+    final group = state.getGroupForSource(id);
+    final groupId = group?.id;
+
+    if (firstGroupId == null) {
+      firstGroupId = groupId;
+    } else if (groupId != firstGroupId) {
+      allSameGroup = false;
+      break;
+    }
+  }
+
+  // 모두 같은 그룹(null 아닌)이면 머지 불가
+  return !(allSameGroup && firstGroupId != null);
+});

@@ -424,7 +424,7 @@ class MultiSourcePanel extends ConsumerWidget {
 }
 
 /// Selection action bar shown when 2+ sources are selected
-class _SelectionActionBar extends StatelessWidget {
+class _SelectionActionBar extends ConsumerWidget {
   final int selectedCount;
   final VoidCallback onMerge;
 
@@ -434,7 +434,9 @@ class _SelectionActionBar extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final canMerge = ref.watch(canMergeSelectedSourcesProvider);
+
     return Container(
       height: 36,
       padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -475,7 +477,7 @@ class _SelectionActionBar extends StatelessWidget {
           ),
           const Spacer(),
           // Merge button
-          _MergeButton(onTap: onMerge),
+          _MergeButton(onTap: onMerge, enabled: canMerge),
         ],
       ),
     );
@@ -485,8 +487,9 @@ class _SelectionActionBar extends StatelessWidget {
 /// Merge button with hover effect
 class _MergeButton extends StatefulWidget {
   final VoidCallback onTap;
+  final bool enabled;
 
-  const _MergeButton({required this.onTap});
+  const _MergeButton({required this.onTap, this.enabled = true});
 
   @override
   State<_MergeButton> createState() => _MergeButtonState();
@@ -497,19 +500,26 @@ class _MergeButtonState extends State<_MergeButton> {
 
   @override
   Widget build(BuildContext context) {
+    final isEnabled = widget.enabled;
+
     return MouseRegion(
-      onEnter: (_) => setState(() => _isHovered = true),
+      cursor: isEnabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
+      onEnter: (_) {
+        if (isEnabled) setState(() => _isHovered = true);
+      },
       onExit: (_) => setState(() => _isHovered = false),
       child: GestureDetector(
-        onTap: widget.onTap,
+        onTap: isEnabled ? widget.onTap : null,
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           decoration: BoxDecoration(
-            color: _isHovered
-                ? EditorColors.primary
-                : EditorColors.primary.withValues(alpha: 0.9),
+            color: isEnabled
+                ? (_isHovered
+                    ? EditorColors.primary
+                    : EditorColors.primary.withValues(alpha: 0.9))
+                : EditorColors.iconDisabled.withValues(alpha: 0.3),
             borderRadius: BorderRadius.circular(4),
-            boxShadow: _isHovered
+            boxShadow: isEnabled && _isHovered
                 ? [
                     BoxShadow(
                       color: EditorColors.primary.withValues(alpha: 0.3),
@@ -525,15 +535,15 @@ class _MergeButtonState extends State<_MergeButton> {
               Icon(
                 Icons.merge_type,
                 size: 14,
-                color: Colors.white,
+                color: isEnabled ? Colors.white : EditorColors.iconDisabled,
               ),
               const SizedBox(width: 4),
-              const Text(
+              Text(
                 'Merge',
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
-                  color: Colors.white,
+                  color: isEnabled ? Colors.white : EditorColors.iconDisabled,
                 ),
               ),
             ],
