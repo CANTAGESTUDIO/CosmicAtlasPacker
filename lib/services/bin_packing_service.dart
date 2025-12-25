@@ -106,6 +106,8 @@ class BinPackingService {
   /// [padding] - Padding between sprites (default 0)
   /// [powerOfTwo] - Ensure atlas dimensions are power of two
   /// [allowRotation] - Allow 90 degree rotation for better packing
+  /// [outputScale] - Scale factor for output (0.1 ~ 1.0, default 1.0)
+  /// [fixedSize] - If true, keep exact maxWidth/maxHeight without shrinking
   PackingResult pack(
     List<SpriteRegion> sprites, {
     int maxWidth = 4096,
@@ -113,6 +115,8 @@ class BinPackingService {
     int padding = 0,
     bool powerOfTwo = false,
     bool allowRotation = false,
+    double outputScale = 1.0,
+    bool fixedSize = false,
   }) {
     if (sprites.isEmpty) {
       return const PackingResult(
@@ -122,9 +126,13 @@ class BinPackingService {
       );
     }
 
-    // Ensure minimum size can fit largest sprite
-    final maxSpriteWidth = sprites.map((s) => s.width + padding * 2).reduce((a, b) => a > b ? a : b);
-    final maxSpriteHeight = sprites.map((s) => s.height + padding * 2).reduce((a, b) => a > b ? a : b);
+    // Apply outputScale to sprite dimensions for packing
+    final scaledWidth = (int width) => (width * outputScale).round();
+    final scaledHeight = (int height) => (height * outputScale).round();
+
+    // Ensure minimum size can fit largest sprite (scaled)
+    final maxSpriteWidth = sprites.map((s) => scaledWidth(s.width) + padding * 2).reduce((a, b) => a > b ? a : b);
+    final maxSpriteHeight = sprites.map((s) => scaledHeight(s.height) + padding * 2).reduce((a, b) => a > b ? a : b);
 
     // Start with smallest power-of-2 that fits largest sprite
     int atlasWidth = _nextPowerOfTwo(maxSpriteWidth);
@@ -141,9 +149,19 @@ class BinPackingService {
         atlasHeight,
         padding,
         allowRotation,
+        outputScale,
       );
 
       if (bestResult.isComplete) {
+        if (fixedSize) {
+          // Keep exact size specified by user
+          return PackingResult(
+            packedSprites: bestResult.packedSprites,
+            atlasWidth: maxWidth,
+            atlasHeight: maxHeight,
+            failedSprites: bestResult.failedSprites,
+          );
+        }
         // Shrink atlas to minimum required size
         final shrunkResult = _shrinkAtlas(bestResult, powerOfTwo);
         return shrunkResult;
@@ -158,6 +176,16 @@ class BinPackingService {
     }
 
     // Return partial result if we hit max size
+    // For fixedSize mode, always use the specified dimensions even if packing failed
+    if (fixedSize) {
+      return PackingResult(
+        packedSprites: bestResult?.packedSprites ?? [],
+        atlasWidth: maxWidth,
+        atlasHeight: maxHeight,
+        failedSprites: bestResult?.failedSprites ?? sprites,
+      );
+    }
+
     return bestResult ?? const PackingResult(
       packedSprites: [],
       atlasWidth: 0,
@@ -173,12 +201,13 @@ class BinPackingService {
     int atlasHeight,
     int padding,
     bool allowRotation,
+    double outputScale,
   ) {
     PackingResult? bestResult;
     double bestEfficiency = -1;
 
     for (final sortStrategy in _sortStrategies) {
-      final sortedSprites = _sortSprites(sprites, sortStrategy);
+      final sortedSprites = _sortSprites(sprites, sortStrategy, outputScale);
 
       for (final heuristic in _placementHeuristics) {
         final result = _tryPack(
@@ -188,6 +217,7 @@ class BinPackingService {
           padding,
           allowRotation,
           heuristic,
+          outputScale,
         );
 
         if (result.isComplete) {
@@ -218,38 +248,44 @@ class BinPackingService {
     // If no complete result found, return best partial
     if (bestResult == null) {
       // Just use area sort with BSSF as fallback
-      final sorted = _sortSprites(sprites, SortStrategy.area);
-      return _tryPack(sorted, atlasWidth, atlasHeight, padding, allowRotation, PlacementHeuristic.bssf);
+      final sorted = _sortSprites(sprites, SortStrategy.area, outputScale);
+      return _tryPack(sorted, atlasWidth, atlasHeight, padding, allowRotation, PlacementHeuristic.bssf, outputScale);
     }
 
     return bestResult;
   }
 
   /// Sort sprites by given strategy in descending order
-  List<SpriteRegion> _sortSprites(List<SpriteRegion> sprites, SortStrategy strategy) {
+  /// Uses scaled dimensions for sorting when outputScale < 1.0
+  List<SpriteRegion> _sortSprites(List<SpriteRegion> sprites, SortStrategy strategy, double outputScale) {
     final sorted = List<SpriteRegion>.from(sprites);
+
+    // Helper to get scaled dimensions
+    int scaledW(SpriteRegion s) => (s.width * outputScale).round();
+    int scaledH(SpriteRegion s) => (s.height * outputScale).round();
+    int scaledArea(SpriteRegion s) => scaledW(s) * scaledH(s);
 
     switch (strategy) {
       case SortStrategy.area:
-        sorted.sort((a, b) => b.area.compareTo(a.area));
+        sorted.sort((a, b) => scaledArea(b).compareTo(scaledArea(a)));
         break;
       case SortStrategy.height:
-        sorted.sort((a, b) => b.height.compareTo(a.height));
+        sorted.sort((a, b) => scaledH(b).compareTo(scaledH(a)));
         break;
       case SortStrategy.width:
-        sorted.sort((a, b) => b.width.compareTo(a.width));
+        sorted.sort((a, b) => scaledW(b).compareTo(scaledW(a)));
         break;
       case SortStrategy.maxSide:
         sorted.sort((a, b) {
-          final maxA = a.width > a.height ? a.width : a.height;
-          final maxB = b.width > b.height ? b.width : b.height;
+          final maxA = scaledW(a) > scaledH(a) ? scaledW(a) : scaledH(a);
+          final maxB = scaledW(b) > scaledH(b) ? scaledW(b) : scaledH(b);
           return maxB.compareTo(maxA);
         });
         break;
       case SortStrategy.perimeter:
         sorted.sort((a, b) {
-          final perimA = 2 * (a.width + a.height);
-          final perimB = 2 * (b.width + b.height);
+          final perimA = 2 * (scaledW(a) + scaledH(a));
+          final perimB = 2 * (scaledW(b) + scaledH(b));
           return perimB.compareTo(perimA);
         });
         break;
@@ -266,6 +302,7 @@ class BinPackingService {
     int padding,
     bool allowRotation,
     PlacementHeuristic heuristic,
+    double outputScale,
   ) {
     // Initialize free rectangles with full atlas area
     final freeRects = <Rect>[
@@ -276,8 +313,11 @@ class BinPackingService {
     final failedSprites = <SpriteRegion>[];
 
     for (final sprite in sprites) {
-      final spriteWidth = sprite.width + padding * 2;
-      final spriteHeight = sprite.height + padding * 2;
+      // Apply outputScale to sprite dimensions
+      final scaledSpriteWidth = (sprite.width * outputScale).round();
+      final scaledSpriteHeight = (sprite.height * outputScale).round();
+      final spriteWidth = scaledSpriteWidth + padding * 2;
+      final spriteHeight = scaledSpriteHeight + padding * 2;
 
       // Find best position using selected heuristic (with optional rotation)
       final placement = _findBestPositionWithRotation(
@@ -291,8 +331,9 @@ class BinPackingService {
 
       if (placement != null) {
         final isRotated = placement.rotation == 90;
-        final actualWidth = isRotated ? sprite.height : sprite.width;
-        final actualHeight = isRotated ? sprite.width : sprite.height;
+        // Use scaled dimensions for packedRect
+        final actualWidth = isRotated ? scaledSpriteHeight : scaledSpriteWidth;
+        final actualHeight = isRotated ? scaledSpriteWidth : scaledSpriteHeight;
 
         // Calculate actual sprite position (accounting for padding)
         final packedRect = Rect.fromLTWH(
@@ -641,4 +682,231 @@ class _PlacementResult {
     required this.rect,
     required this.rotation,
   });
+}
+
+/// Result of optimal packing with individual scales
+class OptimalPackingResult {
+  final PackingResult packingResult;
+  final Map<String, double> individualScales; // spriteId -> scale
+  final double efficiency;
+
+  const OptimalPackingResult({
+    required this.packingResult,
+    required this.individualScales,
+    required this.efficiency,
+  });
+}
+
+/// Service for finding optimal packing with individual sprite scaling
+class OptimalPackingService {
+  final BinPackingService _packer = BinPackingService();
+
+  /// Find optimal packing using selection + round-robin reduction
+  ///
+  /// Algorithm:
+  /// Phase 1: Fill canvas with small sprites first (original size)
+  /// Phase 2: For excluded sprites (sorted large to small),
+  ///          reduce each by 10% in round-robin until they fit
+  OptimalPackingResult findOptimalPacking({
+    required List<SpriteRegion> sprites,
+    required int maxWidth,
+    required int maxHeight,
+    int padding = 0,
+    bool allowRotation = false,
+    double targetEfficiency = 0.8,
+    int reductionStep = 10, // unused, kept for compatibility
+  }) {
+    if (sprites.isEmpty) {
+      return OptimalPackingResult(
+        packingResult: const PackingResult(
+          packedSprites: [],
+          atlasWidth: 0,
+          atlasHeight: 0,
+        ),
+        individualScales: {},
+        efficiency: 0.0,
+      );
+    }
+
+    // Initialize scales (all 1.0)
+    final scales = <String, double>{};
+    for (final sprite in sprites) {
+      scales[sprite.id] = 1.0;
+    }
+
+    // ===== Phase 1: Fill with small sprites first (original size) =====
+    // Sort by area ascending (smallest first)
+    final sortedByAreaAsc = List<SpriteRegion>.from(sprites)
+      ..sort((a, b) => (a.width * a.height).compareTo(b.width * b.height));
+
+    final included = <SpriteRegion>[];
+    final excluded = <SpriteRegion>[];
+
+    print('[OptimalPacking] Phase 1: Filling with small sprites first...');
+
+    for (final sprite in sortedByAreaAsc) {
+      final testList = [...included, sprite];
+      final result = _packWithScales(testList, scales, maxWidth, maxHeight, padding, allowRotation);
+
+      if (result.isComplete) {
+        included.add(sprite);
+      } else {
+        excluded.add(sprite);
+      }
+    }
+
+    print('[OptimalPacking] Phase 1 complete: ${included.length} included, ${excluded.length} excluded');
+
+    if (excluded.isEmpty) {
+      // All sprites fit at original size
+      final result = _packWithScales(included, scales, maxWidth, maxHeight, padding, allowRotation);
+      print('[OptimalPacking] All sprites fit! Efficiency: ${(result.efficiency * 100).toStringAsFixed(1)}%');
+      return OptimalPackingResult(
+        packingResult: result,
+        individualScales: scales,
+        efficiency: result.efficiency,
+      );
+    }
+
+    // ===== Phase 2: Round-robin reduction for excluded sprites =====
+    // Sort excluded by area descending (largest first for reduction)
+    excluded.sort((a, b) => (b.width * b.height).compareTo(a.width * a.height));
+
+    print('[OptimalPacking] Phase 2: Round-robin reduction for ${excluded.length} excluded sprites...');
+    print('[OptimalPacking] Excluded (large to small): ${excluded.map((s) => s.id).join(", ")}');
+
+    const maxRounds = 20; // Max 20 rounds = up to ~88% reduction (0.9^20 ≈ 0.12)
+    const reductionPercent = 0.9; // 10% reduction each time
+    const minScale = 0.3; // Don't shrink below 30%
+
+    for (int round = 0; round < maxRounds && excluded.isNotEmpty; round++) {
+      print('[OptimalPacking] Round $round: ${excluded.length} sprites remaining');
+
+      // Try each excluded sprite (large to small)
+      for (int i = 0; i < excluded.length; ) {
+        final sprite = excluded[i];
+        final currentScale = scales[sprite.id]!;
+
+        // Skip if already at minimum scale
+        if (currentScale <= minScale) {
+          i++;
+          continue;
+        }
+
+        // Reduce by 10%
+        final newScale = currentScale * reductionPercent;
+        scales[sprite.id] = newScale;
+
+        // Try to fit with current included sprites
+        final testList = [...included, sprite];
+        final result = _packWithScales(testList, scales, maxWidth, maxHeight, padding, allowRotation);
+
+        if (result.isComplete) {
+          // Success! Move to included
+          print('[OptimalPacking] ${sprite.id} fits at ${(newScale * 100).toInt()}% scale');
+          included.add(sprite);
+          excluded.removeAt(i);
+          // Don't increment i, next item shifts to current position
+        } else {
+          i++;
+        }
+      }
+
+      // Check if all remaining excluded sprites are at minimum scale
+      final allAtMinScale = excluded.every((s) => scales[s.id]! <= minScale);
+      if (allAtMinScale) {
+        print('[OptimalPacking] All remaining sprites at minimum scale, stopping');
+        break;
+      }
+    }
+
+    // ===== Final result =====
+    final finalResult = _packWithScales(included, scales, maxWidth, maxHeight, padding, allowRotation);
+
+    print('[OptimalPacking] Final: ${included.length}/${sprites.length} sprites, '
+        'efficiency=${(finalResult.efficiency * 100).toStringAsFixed(1)}%');
+
+    if (excluded.isNotEmpty) {
+      print('[OptimalPacking] Could not fit: ${excluded.map((s) => '${s.id}(${(scales[s.id]! * 100).toInt()}%)').join(", ")}');
+    }
+
+    return OptimalPackingResult(
+      packingResult: finalResult,
+      individualScales: scales,
+      efficiency: finalResult.efficiency,
+    );
+  }
+
+  /// Pack sprites with individual scales
+  /// IMPORTANT: This preserves original sourceRect in PackedSprite.sprite
+  /// The packedRect contains the scaled size for atlas placement
+  PackingResult _packWithScales(
+    List<SpriteRegion> sprites,
+    Map<String, double> scales,
+    int maxWidth,
+    int maxHeight,
+    int padding,
+    bool allowRotation,
+  ) {
+    // Build a map for quick lookup of original sprites by id
+    final originalSpritesById = <String, SpriteRegion>{};
+    for (final sprite in sprites) {
+      originalSpritesById[sprite.id] = sprite;
+    }
+
+    // Create temporary scaled sprite copies for packing calculation only
+    // These have modified sourceRect for correct size calculation during packing
+    final scaledSprites = sprites.map((sprite) {
+      final scale = scales[sprite.id] ?? 1.0;
+      if (scale == 1.0) return sprite;
+
+      // Temporarily modify sourceRect for packing calculation
+      // This will be replaced with original sprite in the result
+      return sprite.copyWith(
+        sourceRect: Rect.fromLTWH(
+          sprite.sourceRect.left,
+          sprite.sourceRect.top,
+          sprite.sourceRect.width * scale,
+          sprite.sourceRect.height * scale,
+        ),
+      );
+    }).toList();
+
+    // Perform packing with scaled sprites
+    final packingResult = _packer.pack(
+      scaledSprites,
+      maxWidth: maxWidth,
+      maxHeight: maxHeight,
+      padding: padding,
+      allowRotation: allowRotation,
+      fixedSize: true,
+      outputScale: 1.0, // Already scaled individually
+    );
+
+    // Replace scaled sprites with original sprites in the result
+    // This preserves the original sourceRect while keeping the scaled packedRect
+    final restoredPackedSprites = packingResult.packedSprites.map((packed) {
+      final originalSprite = originalSpritesById[packed.sprite.id];
+      if (originalSprite == null) {
+        return packed; // Fallback, should not happen
+      }
+      return PackedSprite(
+        sprite: originalSprite, // Original sprite with unmodified sourceRect
+        packedRect: packed.packedRect, // Scaled position/size in atlas
+        rotation: packed.rotation,
+      );
+    }).toList();
+
+    // Restore original sprites in failed list too
+    final restoredFailedSprites = packingResult.failedSprites.map((scaled) {
+      return originalSpritesById[scaled.id] ?? scaled;
+    }).toList();
+
+    return PackingResult(
+      packedSprites: restoredPackedSprites,
+      atlasWidth: packingResult.atlasWidth,
+      atlasHeight: packingResult.atlasHeight,
+      failedSprites: restoredFailedSprites,
+    );
+  }
 }

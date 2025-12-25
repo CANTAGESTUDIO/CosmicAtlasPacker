@@ -230,12 +230,13 @@ class _ExportDialogState extends ConsumerState<ExportDialog> {
         final erosionPixels = isEtc2_4bit ? 0.0 : atlasSettings.edgeCrop;
         final erosionAntiAlias = isEtc2_4bit ? false : atlasSettings.erosionAntiAlias;
 
-        // Generate atlas image with erosion applied (same as preview)
+        // Generate atlas image with erosion and outputScale applied (same as preview)
         final atlasImage = exportService.generateMultiSourceAtlasImage(
           sourceImages: sourceImages,
           packingResult: _previewPackingResult!,
           erosionPixels: erosionPixels,
           erosionAntiAlias: erosionAntiAlias,
+          outputScale: atlasSettings.outputScale,
         );
 
         if (_enableTextureCompression) {

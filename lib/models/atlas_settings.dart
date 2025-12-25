@@ -18,6 +18,8 @@ class AtlasSettings with _$AtlasSettings {
     @Default(false) bool erosionAntiAlias, // 침식 안티앨리어싱
     @Default(false) bool allowRotation, // Rotate 비활성화 기본값
     @Default(false) bool tightPacking, // Tight Packing 비활성화 기본값
+    @Default(1.0) double outputScale, // 출력 스케일 (0.1 ~ 1.0, 캔버스 크기 조정 시 사용)
+    @Default(false) bool fixedSize, // 사용자 지정 크기 고정 (축소 안함)
   }) = _AtlasSettings;
 
   factory AtlasSettings.fromJson(Map<String, dynamic> json) =>

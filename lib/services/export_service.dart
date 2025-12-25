@@ -476,12 +476,14 @@ class ExportService {
   /// [packingResult] - Result of bin packing algorithm
   /// [erosionPixels] - Number of pixels to erode from sprite edges (0 = no erosion, supports decimal)
   /// [erosionAntiAlias] - Apply anti-aliasing to smooth eroded edges
+  /// [outputScale] - Scale factor for output sprites (0.1 ~ 1.0, default 1.0)
   /// Returns the composed atlas image
   img.Image generateMultiSourceAtlasImage({
     required Map<String, dynamic> sourceImages,
     required PackingResult packingResult,
     double erosionPixels = 0,
     bool erosionAntiAlias = false,
+    double outputScale = 1.0,
   }) {
     final erosionService = ImageErosionService();
 
@@ -536,14 +538,29 @@ class ExportService {
           );
         }
 
-        // Apply rotation if sprite was rotated during packing
+        // Apply rotation FIRST if sprite was rotated during packing
+        // (packedRect size is already rotation-adjusted, so rotate before resize)
         if (packed.isRotated) {
           spriteImage = _rotateImage(spriteImage, packed.rotation);
         }
 
+        // Apply scale to match packedRect size
+        // SmartPacking may have individual scales per sprite
+        final targetWidth = packed.width.round();
+        final targetHeight = packed.height.round();
+
+        if (spriteImage.width != targetWidth || spriteImage.height != targetHeight) {
+          spriteImage = img.copyResize(
+            spriteImage,
+            width: targetWidth.clamp(1, 8192),
+            height: targetHeight.clamp(1, 8192),
+            interpolation: img.Interpolation.linear,
+          );
+        }
+
         // Copy to atlas
-        for (int y = 0; y < spriteImage.height && y < packed.height; y++) {
-          for (int x = 0; x < spriteImage.width && x < packed.width; x++) {
+        for (int y = 0; y < spriteImage.height; y++) {
+          for (int x = 0; x < spriteImage.width; x++) {
             final pixel = spriteImage.getPixel(x, y);
             final dstX = packed.x + x;
             final dstY = packed.y + y;
@@ -583,14 +600,29 @@ class ExportService {
           );
         }
 
-        // Apply rotation if sprite was rotated during packing
+        // Apply rotation FIRST if sprite was rotated during packing
+        // (packedRect size is already rotation-adjusted, so rotate before resize)
         if (packed.isRotated) {
           spriteImage = _rotateImage(spriteImage, packed.rotation);
         }
 
+        // Apply scale to match packedRect size
+        // SmartPacking may have individual scales per sprite
+        final targetWidth = packed.width.round();
+        final targetHeight = packed.height.round();
+
+        if (spriteImage.width != targetWidth || spriteImage.height != targetHeight) {
+          spriteImage = img.copyResize(
+            spriteImage,
+            width: targetWidth.clamp(1, 8192),
+            height: targetHeight.clamp(1, 8192),
+            interpolation: img.Interpolation.linear,
+          );
+        }
+
         // Copy rotated/eroded sprite to atlas
-        for (int y = 0; y < spriteImage.height && y < packed.height; y++) {
-          for (int x = 0; x < spriteImage.width && x < packed.width; x++) {
+        for (int y = 0; y < spriteImage.height; y++) {
+          for (int x = 0; x < spriteImage.width; x++) {
             final pixel = spriteImage.getPixel(x, y);
             final dstX = packed.x + x;
             final dstY = packed.y + y;

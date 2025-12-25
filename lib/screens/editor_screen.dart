@@ -754,7 +754,8 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
     await ref.read(multiImageProvider.notifier).pickAndLoadImages();
 
     // Sync active source to sourceImageProvider for backward compatibility
-    _syncActiveSourceToSingleImage();
+    // Use microtask to ensure state is updated before sync
+    Future.microtask(() => _syncActiveSourceToSingleImage());
   }
 
   /// Sync active source from multiImageProvider to sourceImageProvider

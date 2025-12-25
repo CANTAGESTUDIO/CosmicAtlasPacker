@@ -8,8 +8,10 @@ import '../../models/enums/editor_mode.dart';
 import '../../models/enums/tool_mode.dart';
 import '../../providers/editor_state_provider.dart';
 import '../../providers/export_provider.dart';
+import '../../providers/packing_provider.dart';
 import '../../providers/project_provider.dart';
 import '../../theme/editor_colors.dart';
+import '../dialogs/canvas_size_dialog.dart';
 import '../dialogs/export_dialog.dart';
 
 /// Editor Toolbar - 2-row layout
@@ -138,6 +140,8 @@ class EditorToolbar extends ConsumerWidget {
                 : () =>
                     ref.read(toolModeProvider.notifier).state = ToolMode.select,
           ),
+          // Smart Packing button
+          _SmartPackingButton(),
           _ToolButton(
             icon: Icons.crop_square_outlined,
             tooltip: 'Rectangle Slice (R)',
@@ -568,6 +572,42 @@ class _ProjectTitle extends ConsumerWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Smart Packing button - opens smart packing dialog
+/// Enabled when source image is loaded (sprites not required)
+class _SmartPackingButton extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final atlasSources = ref.watch(atlasSourcesProvider);
+    final hasSource = atlasSources.isNotEmpty;
+    final editorMode = ref.watch(editorModeProvider);
+    final isEnabled = hasSource && editorMode != EditorMode.animation;
+
+    return Tooltip(
+      message: 'Smart Packing - 오토슬라이스 + 캔버스 최적화',
+      child: Container(
+        width: 32,
+        height: 32,
+        margin: const EdgeInsets.symmetric(horizontal: 1),
+        decoration: BoxDecoration(
+          color: Colors.transparent,
+          borderRadius: BorderRadius.circular(4),
+        ),
+        child: IconButton(
+          icon: Icon(
+            Icons.auto_fix_high,
+            size: 18,
+            color: isEnabled ? EditorColors.iconDefault : EditorColors.iconDisabled,
+          ),
+          padding: EdgeInsets.zero,
+          onPressed: isEnabled
+              ? () => CanvasSizeDialog.show(context, ref)
+              : null,
+        ),
+      ),
     );
   }
 }

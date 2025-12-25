@@ -1,5 +1,6 @@
 import 'dart:ui' as ui;
 
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/atlas_settings.dart';
@@ -7,8 +8,18 @@ import '../models/sprite_region.dart';
 import '../services/bin_packing_service.dart';
 import '../services/export_service.dart';
 import '../services/image_loader_service.dart';
-import 'multi_image_provider.dart'; // activeSourceProvider
-import 'multi_sprite_provider.dart'; // activeSourceSpritesProvider
+import '../services/smart_packing_service.dart';
+import 'multi_image_provider.dart';
+import 'multi_sprite_provider.dart';
+
+/// 패킹 모드 enum
+enum PackingMode { standard, smart }
+
+/// 스마트 패킹 모드 활성화 여부
+final isSmartPackingModeProvider = StateProvider<bool>((ref) => false);
+
+/// 개별 스케일 맵 (SmartMode에서만 사용)
+final individualScalesProvider = StateProvider<Map<String, double>>((ref) => {});
 
 /// Provider for atlas packing settings
 final atlasSettingsProvider =
@@ -17,6 +28,7 @@ final atlasSettingsProvider =
 });
 
 /// Notifier for managing atlas settings state
+/// 옵션 변경 시 packingResultProvider가 자동으로 재계산됨 (캐시 무효화 불필요)
 class AtlasSettingsNotifier extends StateNotifier<AtlasSettings> {
   AtlasSettingsNotifier() : super(const AtlasSettings());
 
@@ -88,6 +100,11 @@ final binPackingServiceProvider = Provider<BinPackingService>((ref) {
   return BinPackingService();
 });
 
+/// Provider for smart packing service
+final smartPackingServiceProvider = Provider<SmartPackingService>((ref) {
+  return SmartPackingService();
+});
+
 /// Provider to determine if we're in merge mode (group or multi-select)
 final isMergeModeProvider = Provider<bool>((ref) {
   final multiImageState = ref.watch(multiImageProvider);
@@ -145,27 +162,64 @@ final atlasSpritesProvider = Provider<List<SpriteRegion>>((ref) {
 });
 
 
-/// Provider for packing result - supports both single and merge mode
+/// Provider for packing result - supports both SmartMode and StandardMode
+/// SmartMode: 개별 스프라이트 스케일 조정으로 높은 efficiency
+/// StandardMode: uniform outputScale로 일괄 스케일링
 final packingResultProvider = Provider<PackingResult?>((ref) {
   final sprites = ref.watch(atlasSpritesProvider);
   final settings = ref.watch(atlasSettingsProvider);
-  final packingService = ref.watch(binPackingServiceProvider);
+  final isSmartMode = ref.watch(isSmartPackingModeProvider);
 
   if (sprites.isEmpty) {
     return null;
   }
 
-  // Tight packing forces padding to 0
   final effectivePadding = settings.tightPacking ? 0 : settings.padding;
 
-  return packingService.pack(
-    sprites,
-    maxWidth: settings.maxWidth,
-    maxHeight: settings.maxHeight,
-    padding: effectivePadding,
-    powerOfTwo: settings.powerOfTwo,
-    allowRotation: settings.allowRotation,
-  );
+  if (isSmartMode) {
+    // SmartMode: SmartPackingService 사용 (개별 스케일 조정)
+    final smartService = ref.watch(smartPackingServiceProvider);
+    final smartResult = smartService.findOptimalPacking(
+      sprites: sprites,
+      canvasWidth: settings.maxWidth,
+      canvasHeight: settings.maxHeight,
+      padding: effectivePadding,
+      allowRotation: settings.allowRotation,
+    );
+
+    // 개별 스케일 저장 (export에서 사용)
+    // Note: Provider 내에서 다른 provider 수정 - WidgetsBinding.addPostFrameCallback 사용
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(individualScalesProvider.notifier).state = smartResult.individualScales;
+    });
+
+    print('[packingResultProvider] SmartMode: ${settings.maxWidth}x${settings.maxHeight}, '
+        'efficiency=${(smartResult.efficiency * 100).toStringAsFixed(1)}%');
+
+    return smartResult.packingResult;
+  } else {
+    // StandardMode: BinPackingService 사용 (uniform scale)
+    final packingService = ref.watch(binPackingServiceProvider);
+
+    print('[packingResultProvider] StandardMode: maxSize=${settings.maxWidth}x${settings.maxHeight}, '
+        'outputScale=${settings.outputScale}, fixedSize=${settings.fixedSize}');
+
+    final result = packingService.pack(
+      sprites,
+      maxWidth: settings.maxWidth,
+      maxHeight: settings.maxHeight,
+      padding: effectivePadding,
+      powerOfTwo: settings.powerOfTwo,
+      allowRotation: settings.allowRotation,
+      outputScale: settings.outputScale,
+      fixedSize: settings.fixedSize,
+    );
+
+    print('[packingResultProvider] result: ${result.atlasWidth}x${result.atlasHeight}, '
+        'efficiency=${(result.efficiency * 100).toStringAsFixed(1)}%');
+
+    return result;
+  }
 });
 
 /// Provider for atlas dimensions
@@ -243,13 +297,14 @@ final atlasPreviewImageProvider = FutureProvider.autoDispose<ui.Image?>((ref) as
     sourceImages[source.id] = source.effectiveRawImage;
   }
 
-  // Generate atlas image using ExportService with erosion applied
+  // Generate atlas image using ExportService with erosion and outputScale applied
   final exportService = ref.read(_exportServiceProvider);
   final atlasImage = exportService.generateMultiSourceAtlasImage(
     sourceImages: sourceImages,
     packingResult: packingResult,
     erosionPixels: settings.edgeCrop,
     erosionAntiAlias: settings.erosionAntiAlias,
+    outputScale: settings.outputScale,
   );
 
   // Convert img.Image to ui.Image for rendering

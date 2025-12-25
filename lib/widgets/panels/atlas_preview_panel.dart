@@ -11,7 +11,6 @@ import '../../services/bin_packing_service.dart';
 import '../../services/image_loader_service.dart';
 import '../../theme/editor_colors.dart';
 import '../dialogs/background_remove_dialog.dart';
-import '../dialogs/canvas_size_dialog.dart';
 
 /// Atlas Preview Panel - displays packed atlas result with interactive zoom/pan
 class AtlasPreviewPanel extends ConsumerStatefulWidget {
@@ -388,11 +387,9 @@ class _AtlasPreviewPanelState extends ConsumerState<AtlasPreviewPanel> {
                 ),
               ],
             ),
-            // Anti-aliasing toggle (only show when erosion is active)
-            if (isActive) ...[
-              const SizedBox(height: 6),
-              _buildAntiAliasToggle(ref, settings.erosionAntiAlias),
-            ],
+            // Anti-aliasing toggle (always visible)
+            const SizedBox(height: 6),
+            _buildAntiAliasToggle(ref, settings.erosionAntiAlias),
 
             // --- Packing Options Section ---
             const SizedBox(height: 12),
@@ -507,13 +504,8 @@ class _AtlasPreviewPanelState extends ConsumerState<AtlasPreviewPanel> {
               color: EditorColors.border.withValues(alpha: 0.5),
             ),
             const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(child: _buildBgRemoveButton(context, ref)),
-                const SizedBox(width: 6),
-                Expanded(child: _buildCanvasSizeButton(context, ref)),
-              ],
-            ),
+            // Background remove button (full width now)
+            _buildBgRemoveButton(context, ref),
 
             // --- Atlas Info ---
             const SizedBox(height: 12),
@@ -709,52 +701,6 @@ class _AtlasPreviewPanelState extends ConsumerState<AtlasPreviewPanel> {
                   style: TextStyle(
                     fontSize: 10,
                     color: hasSource ? EditorColors.iconDefault : EditorColors.iconDisabled,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCanvasSizeButton(BuildContext context, WidgetRef ref) {
-    final packingResult = ref.watch(packingResultProvider);
-    final hasSprites = packingResult != null && packingResult.packedSprites.isNotEmpty;
-
-    return GestureDetector(
-      onTap: hasSprites
-          ? () async {
-              // TODO: Show canvas size dialog
-              await CanvasSizeDialog.show(context, ref);
-            }
-          : null,
-      child: MouseRegion(
-        cursor: hasSprites ? SystemMouseCursors.click : SystemMouseCursors.basic,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-          decoration: BoxDecoration(
-            color: EditorColors.border,
-            borderRadius: BorderRadius.circular(4),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.aspect_ratio,
-                size: 12,
-                color: hasSprites ? EditorColors.iconDefault : EditorColors.iconDisabled,
-              ),
-              const SizedBox(width: 4),
-              Flexible(
-                child: Text(
-                  '캔버스',
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: hasSprites ? EditorColors.iconDefault : EditorColors.iconDisabled,
                   ),
                   overflow: TextOverflow.ellipsis,
                 ),

@@ -104,7 +104,8 @@ class SourceSidebar extends ConsumerWidget {
                   onTap: () async {
                     if (ref.read(multiImageProvider).isLoading) return;
                     await ref.read(multiImageProvider.notifier).pickAndLoadImages();
-                    _syncActiveSource(ref);
+                    // Use microtask to ensure state is updated before sync
+                    Future.microtask(() => _syncActiveSource(ref));
                   },
                 ),
               ],

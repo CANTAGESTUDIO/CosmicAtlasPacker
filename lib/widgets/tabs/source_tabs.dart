@@ -89,7 +89,8 @@ class SourceTabs extends ConsumerWidget {
 
               await ref.read(multiImageProvider.notifier).pickAndLoadImages();
               // Sync to sourceImageProvider after adding images
-              _syncActiveSource(ref);
+              // Use microtask to ensure state is updated before sync
+              Future.microtask(() => _syncActiveSource(ref));
             },
           ),
         ],

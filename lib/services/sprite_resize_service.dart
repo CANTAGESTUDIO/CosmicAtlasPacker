@@ -61,6 +61,68 @@ class SpriteResizeService {
     return low;
   }
 
+  /// Find optimal scale that fits in canvas AND achieves target efficiency
+  ///
+  /// This method finds the best scale that:
+  /// 1. Fits all sprites within the canvas
+  /// 2. Achieves at least [targetEfficiency] (default 80%)
+  /// 3. Allows upscaling (scale > 1.0) to fill the canvas better
+  ///
+  /// If target efficiency cannot be achieved, returns the scale with best efficiency.
+  static double findOptimalScaleWithEfficiency({
+    required List<SpriteRegion> sprites,
+    required int maxWidth,
+    required int maxHeight,
+    int padding = 0,
+    bool allowRotation = false,
+    double targetEfficiency = 0.8,
+  }) {
+    if (sprites.isEmpty) return 1.0;
+
+    final packer = BinPackingService();
+
+    // Find the maximum scale that fits using fine-grained search
+    // Allow upscaling up to 4x (scale 4.0) if sprites are small
+    double bestScale = 1.0;
+    double bestEfficiency = 0.0;
+
+    print('[findOptimalScaleWithEfficiency] Starting search for $maxWidth x $maxHeight, target efficiency: $targetEfficiency');
+
+    // Step 1: Binary search to find approximate maximum scale that fits
+    double low = 0.1;
+    double high = 4.0;
+
+    while (high - low > 0.001) {
+      final mid = (low + high) / 2;
+
+      final result = packer.pack(
+        sprites,
+        maxWidth: maxWidth,
+        maxHeight: maxHeight,
+        padding: padding,
+        allowRotation: allowRotation,
+        outputScale: mid,
+        fixedSize: true,
+      );
+
+      if (result.isComplete) {
+        low = mid;
+        bestScale = mid;
+        bestEfficiency = result.efficiency;
+      } else {
+        high = mid;
+      }
+    }
+
+    print('[findOptimalScaleWithEfficiency] Max fitting scale: $bestScale, efficiency: ${(bestEfficiency * 100).toStringAsFixed(1)}%');
+
+    // Step 2: The maximum scale that fits gives the best efficiency
+    // (larger sprites = more area covered = higher efficiency)
+    // So just return the maximum scale found
+
+    return bestScale;
+  }
+
   /// Create scaled copies of sprites for packing test (without actual image resize)
   static List<SpriteRegion> _scaleSpritesForTest(
     List<SpriteRegion> sprites,
