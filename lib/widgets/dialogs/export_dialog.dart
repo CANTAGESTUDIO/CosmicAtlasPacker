@@ -47,7 +47,10 @@ class _ExportDialogState extends ConsumerState<ExportDialog> {
   bool _exportAnimationInfo = true; // 애니메이션이 있으면 기본 체크
   bool _exportSpriteFont = false; // 스프라이트 폰트 내보내기
 
-  // 이미지 출력 포맷 설정
+  // 텍스처 압축 설정
+  bool _enableTextureCompression = false; // 텍스처 압축 토글 (OFF = 일반 이미지, ON = ASTC/ETC2)
+
+  // 이미지 출력 포맷 설정 (텍스처 압축 OFF일 때 사용)
   ImageOutputFormat _imageFormat = ImageOutputFormat.png;
   int _imageQuality = 80; // WebP/JPEG 품질 (1-100)
   int _pngCompressionLevel = 6; // PNG 압축 레벨 (0-9)
@@ -1078,27 +1081,39 @@ class _ExportDialogState extends ConsumerState<ExportDialog> {
                   ),
                 ),
                 const Spacer(),
-                // Stats container
-                Container(
-                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                   decoration: BoxDecoration(
-                     color: Colors.black54,
-                     borderRadius: BorderRadius.circular(6),
-                     border: Border.all(color: EditorColors.border),
-                   ),
-                   child: Row(
-                     children: [
-                       const Icon(Icons.memory, size: 16, color: EditorColors.secondary),
-                       const SizedBox(width: 8),
-                        Text(
-                         // Simple memory calc: 4 bytes per pixel
-                         _previewPackingResult != null
-                             ? '${(_previewPackingResult!.atlasWidth * _previewPackingResult!.atlasHeight * 4 / (1024*1024)).toStringAsFixed(2)} MB'
-                             : '0 MB',
-                         style: const TextStyle(fontSize: 13, color: EditorColors.iconDefault, fontFamily: 'monospace', fontWeight: FontWeight.bold),
-                       ),
-                     ],
-                   ),
+                // Stats container - 텍스처 압축 포맷에 따른 예상 용량
+                Builder(
+                  builder: (context) {
+                    final textureSettings = ref.watch(texturePackingSettingsProvider);
+                    final bpp = textureSettings.iosFormat.bitsPerPixel;
+                    final sizeBytes = _previewPackingResult != null
+                        ? (_previewPackingResult!.atlasWidth * _previewPackingResult!.atlasHeight * bpp / 8)
+                        : 0.0;
+                    final sizeMB = sizeBytes / (1024 * 1024);
+                    final sizeKB = sizeBytes / 1024;
+                    final sizeText = sizeMB >= 1.0
+                        ? '${sizeMB.toStringAsFixed(2)} MB'
+                        : '${sizeKB.toStringAsFixed(0)} KB';
+
+                    return Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.black54,
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: EditorColors.border),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.memory, size: 16, color: EditorColors.secondary),
+                          const SizedBox(width: 8),
+                          Text(
+                            sizeText,
+                            style: const TextStyle(fontSize: 13, color: EditorColors.iconDefault, fontFamily: 'monospace', fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
                 ),
               ],
             ),
