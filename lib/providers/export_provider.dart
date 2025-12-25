@@ -1,12 +1,24 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../services/export_service.dart';
+import '../services/texture_compression_service.dart';
 import 'image_provider.dart';
 import 'packing_provider.dart';
 
 /// Provider for export service
 final exportServiceProvider = Provider<ExportService>((ref) {
   return ExportService();
+});
+
+/// Provider for texture compression service
+final textureCompressionServiceProvider = Provider<TextureCompressionService>((ref) {
+  return TextureCompressionService();
+});
+
+/// Provider for checking texture compression tools availability
+final compressionToolsAvailabilityProvider = FutureProvider<Map<String, bool>>((ref) async {
+  final service = ref.watch(textureCompressionServiceProvider);
+  return service.checkToolsAvailability();
 });
 
 /// Provider for generating atlas metadata

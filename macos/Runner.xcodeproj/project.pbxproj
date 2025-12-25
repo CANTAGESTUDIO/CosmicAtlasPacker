@@ -361,7 +361,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "echo \"$PRODUCT_NAME.app\" > \"$PROJECT_DIR\"/Flutter/ephemeral/.app_filename && \"$FLUTTER_ROOT\"/packages/flutter_tools/bin/macos_assemble.sh embed\n";
+			shellScript = "echo \"$PRODUCT_NAME.app\" > \"$PROJECT_DIR\"/Flutter/ephemeral/.app_filename && \"$FLUTTER_ROOT\"/packages/flutter_tools/bin/macos_assemble.sh embed\n\n# Copy texture compression tools to app bundle\nTOOLS_SRC=\"$PROJECT_DIR/Runner/Resources/Tools\"\nTOOLS_DST=\"$BUILT_PRODUCTS_DIR/$PRODUCT_NAME.app/Contents/Resources/Tools\"\nif [ -d \"$TOOLS_SRC\" ]; then\n    mkdir -p \"$TOOLS_DST\"\n    cp -R \"$TOOLS_SRC/\" \"$TOOLS_DST/\"\n    # Ensure binaries are executable\n    chmod +x \"$TOOLS_DST/astcenc-avx2\" 2>/dev/null || true\n    chmod +x \"$TOOLS_DST/EtcTool\" 2>/dev/null || true\n    echo \"Copied texture compression tools to $TOOLS_DST\"\nfi\n";
 		};
 		33CC111E2044C6BF0003C045 /* ShellScript */ = {
 			isa = PBXShellScriptBuildPhase;

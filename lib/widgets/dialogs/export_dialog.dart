@@ -38,6 +38,9 @@ class ExportDialog extends ConsumerStatefulWidget {
 }
 
 class _ExportDialogState extends ConsumerState<ExportDialog> {
+  // 마지막 내보내기 경로 저장 (다이얼로그 재오픈 시 복원)
+  static String? _lastExportPath;
+
   late TextEditingController _pathController;
   late TextEditingController _nameController;
 
@@ -68,11 +71,16 @@ class _ExportDialogState extends ConsumerState<ExportDialog> {
   void initState() {
     super.initState();
 
-    // Default path setup
-    _pathController = TextEditingController(text: '/Users/Shared/AtlasExports');
+    // 마지막 경로가 있으면 복원, 없으면 기본 경로
+    final defaultPath = _lastExportPath ?? '/Users/Shared/AtlasExports';
+    _pathController = TextEditingController(text: defaultPath);
 
     // Start with empty filename - user should provide their own
     _nameController = TextEditingController(text: '');
+
+    // 입력 변경 시 UI 리빌드를 위한 리스너 추가
+    _pathController.addListener(_onInputChanged);
+    _nameController.addListener(_onInputChanged);
 
     // Initial Preview Generation
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -80,8 +88,17 @@ class _ExportDialogState extends ConsumerState<ExportDialog> {
     });
   }
 
+  /// 경로/파일이름 입력 변경 시 내보내기 버튼 활성화 상태 업데이트
+  void _onInputChanged() {
+    setState(() {});
+  }
+
   @override
   void dispose() {
+    // 리스너 제거 (메모리 누수 방지)
+    _pathController.removeListener(_onInputChanged);
+    _nameController.removeListener(_onInputChanged);
+
     _pathController.dispose();
     _nameController.dispose();
     _debounceTimer?.cancel();
@@ -169,11 +186,13 @@ class _ExportDialogState extends ConsumerState<ExportDialog> {
     });
 
     try {
-      final sourceImageState = ref.read(sourceImageProvider);
       final exportService = ref.read(exportServiceProvider);
       final animationState = ref.read(animationProvider);
+      final textureSettings = ref.read(texturePackingSettingsProvider);
+      final atlasSources = ref.read(atlasSourcesProvider);
+      final atlasSettings = ref.read(atlasSettingsProvider);
 
-      if (sourceImageState.rawImage == null) {
+      if (atlasSources.isEmpty) {
         throw Exception('No source image loaded');
       }
 
@@ -184,29 +203,90 @@ class _ExportDialogState extends ConsumerState<ExportDialog> {
 
       final outputPath = _pathController.text;
       final fileName = _nameController.text;
-      final imageExt = _imageFormat.extension;
+
+      // Determine output extension based on compression mode
+      final imageExt = _enableTextureCompression
+          ? textureSettings.iosFormat.fileExtension
+          : _imageFormat.extension;
       final imagePath = '$outputPath${Platform.pathSeparator}$fileName.$imageExt';
       final jsonPath = '$outputPath${Platform.pathSeparator}$fileName.json';
       final fntPath = '$outputPath${Platform.pathSeparator}$fileName.fnt';
 
-      // Export image (PNG/WebP/JPEG)
+      // Temporary PNG path for texture compression (will be deleted after)
+      final tempPngPath = '$outputPath${Platform.pathSeparator}$fileName.temp.png';
+
+      // Export image
       if (_exportPng) {
-        final atlasImage = exportService.generateAtlasImage(
-          sourceImage: sourceImageState.rawImage!,
+        // Build source images map using effectiveRawImage
+        // This respects background removal and other processing options
+        final sourceImages = <String, dynamic>{};
+        for (final source in atlasSources) {
+          sourceImages[source.id] = source.effectiveRawImage;
+        }
+
+        // ETC2 4-bit은 알파 채널이 없으므로 erosion 적용하지 않음
+        final isEtc2_4bit = _enableTextureCompression &&
+            textureSettings.iosFormat == TextureCompressionFormat.etc2_4bit;
+        final erosionPixels = isEtc2_4bit ? 0.0 : atlasSettings.edgeCrop;
+        final erosionAntiAlias = isEtc2_4bit ? false : atlasSettings.erosionAntiAlias;
+
+        // Generate atlas image with erosion applied (same as preview)
+        final atlasImage = exportService.generateMultiSourceAtlasImage(
+          sourceImages: sourceImages,
           packingResult: _previewPackingResult!,
+          erosionPixels: erosionPixels,
+          erosionAntiAlias: erosionAntiAlias,
         );
 
-        // Get quality parameter based on format
-        final quality = _imageFormat == ImageOutputFormat.png
-            ? _pngCompressionLevel
-            : _imageQuality;
+        if (_enableTextureCompression) {
+          // === Texture Compression Mode ===
+          // Step 1: Save temporary PNG
+          await exportService.exportImage(
+            atlasImage: atlasImage,
+            outputPath: tempPngPath,
+            format: ImageOutputFormat.png,
+            quality: 6, // Default compression level
+          );
 
-        await exportService.exportImage(
-          atlasImage: atlasImage,
-          outputPath: imagePath,
-          format: _imageFormat,
-          quality: quality,
-        );
+          // Step 2: Compress to selected format (ASTC or ETC2)
+          final compressionService = ref.read(textureCompressionServiceProvider);
+          final format = textureSettings.iosFormat;
+
+          final compressionResult = await compressionService.compress(
+            inputPngPath: tempPngPath,
+            outputPath: imagePath,
+            format: format,
+            quality: 70, // Medium quality
+          );
+
+          // Step 3: Clean up temporary PNG
+          try {
+            final tempFile = File(tempPngPath);
+            if (await tempFile.exists()) {
+              await tempFile.delete();
+            }
+          } catch (_) {
+            // Ignore cleanup errors
+          }
+
+          // Check compression result
+          if (!compressionResult.success) {
+            throw Exception('Texture compression failed: ${compressionResult.errorMessage}');
+          }
+        } else {
+          // === Normal Image Mode (PNG/JPEG) ===
+          // Get quality parameter based on format
+          final quality = _imageFormat == ImageOutputFormat.png
+              ? _pngCompressionLevel
+              : _imageQuality;
+
+          await exportService.exportImage(
+            atlasImage: atlasImage,
+            outputPath: imagePath,
+            format: _imageFormat,
+            quality: quality,
+          );
+        }
       }
 
       // Export JSON with animation and 9-slice data
@@ -238,6 +318,9 @@ class _ExportDialogState extends ConsumerState<ExportDialog> {
           fontName: fileName,
         );
       }
+
+      // 내보내기 성공 시 경로 저장
+      _lastExportPath = outputPath;
 
       if (mounted) {
         Navigator.of(context).pop(true);
@@ -410,106 +493,151 @@ class _ExportDialogState extends ConsumerState<ExportDialog> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildSectionTitle(
-          '텍스처 압축 설정',
-          Icons.compress,
-          Padding(
-            padding: const EdgeInsets.only(top: 3),
-            child: TextButton(
-              onPressed: _showOnboardingDialog,
-              style: TextButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                backgroundColor: EditorColors.inputBackground,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+        // 섹션 타이틀 + 토글 + 가이드 버튼
+        Padding(
+          padding: const EdgeInsets.only(bottom: 16),
+          child: Row(
+            children: [
+              Icon(Icons.compress, size: 20, color: _enableTextureCompression ? EditorColors.primary : EditorColors.iconDisabled),
+              const SizedBox(width: 10),
+              Text(
+                '텍스처 압축 설정',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: _enableTextureCompression ? EditorColors.iconDefault : EditorColors.iconDisabled,
+                ),
+              ),
+              const SizedBox(width: 12),
+              // 토글 스위치
+              SizedBox(
+                width: 36,
+                height: 24,
+                child: FittedBox(
+                  fit: BoxFit.contain,
+                  alignment: Alignment.centerRight,
+                  child: Switch(
+                    value: _enableTextureCompression,
+                    onChanged: (v) => setState(() => _enableTextureCompression = v),
+                    activeColor: EditorColors.primary,
+                    activeTrackColor: EditorColors.primary.withValues(alpha: 0.5),
+                    inactiveThumbColor: EditorColors.iconDisabled,
+                    inactiveTrackColor: EditorColors.border,
+                    trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    splashRadius: 0,
+                  ),
+                ),
+              ),
+              const Spacer(),
+              // 텍스처 포맷 가이드 버튼
+              Padding(
+                padding: const EdgeInsets.only(top: 3),
+                child: TextButton(
+                  onPressed: _enableTextureCompression ? _showOnboardingDialog : null,
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    backgroundColor: EditorColors.inputBackground,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.school, size: 14, color: _enableTextureCompression ? EditorColors.iconDisabled : EditorColors.iconDisabled.withValues(alpha: 0.4)),
+                      const SizedBox(width: 6),
+                      Text(
+                        '텍스처 포맷 가이드',
+                        style: TextStyle(fontSize: 12, color: _enableTextureCompression ? EditorColors.iconDisabled : EditorColors.iconDisabled.withValues(alpha: 0.4)),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        // 압축 설정 컨텐츠 (토글 OFF 시 비활성화)
+        AnimatedOpacity(
+          duration: const Duration(milliseconds: 200),
+          opacity: _enableTextureCompression ? 1.0 : 0.4,
+          child: IgnorePointer(
+            ignoring: !_enableTextureCompression,
+            child: Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: EditorColors.inputBackground,
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(color: _enableTextureCompression ? EditorColors.border : EditorColors.border.withValues(alpha: 0.5)),
               ),
               child: Row(
-                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(Icons.school, size: 14, color: EditorColors.iconDisabled),
-                  const SizedBox(width: 6),
-                  Text(
-                    '텍스처 포맷 가이드',
-                    style: TextStyle(fontSize: 12, color: EditorColors.iconDisabled),
+                  // Left Column: Preset with recommendations (flex 4)
+                  Expanded(
+                    flex: 4,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildDropdownColumn<GameType>(
+                          label: '프리셋',
+                          value: settings.gameType,
+                          items: GameType.values,
+                          onChanged: (v) {
+                            notifier.updateGameType(v!);
+                            _updatePreview(); // Trigger preview refresh on preset change
+                          },
+                          itemLabelBuilder: (i) => i.displayName,
+                        ),
+                        const SizedBox(height: 16),
+                        // Recommendations
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: EditorColors.surface,
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(color: EditorColors.border.withValues(alpha: 0.5)),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _buildRecommendationRow(
+                                'Android',
+                                settings.gameType.defaultAndroidFormat.displayName,
+                                settings.gameType.defaultAndroidFormat.compressionDescription,
+                              ),
+                              const SizedBox(height: 8),
+                              _buildRecommendationRow(
+                                'iOS',
+                                settings.gameType.defaultIOSFormat.displayName,
+                                settings.gameType.defaultIOSFormat.compressionDescription,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 24),
+
+                  // Right Column: Format Type (flex 6)
+                  Expanded(
+                    flex: 6,
+                    child: _buildDropdownColumn<TextureCompressionFormat>(
+                      label: '포맷 타입',
+                      value: settings.iosFormat,
+                      items: TextureCompressionFormat.values,
+                      onChanged: (v) {
+                        notifier.updateIOSFormat(v!);
+                        _updatePreview(); // Trigger preview refresh on format change
+                      },
+                      itemLabelBuilder: (i) => '${i.displayName}  -  ${i.compressionDescription}',
+                      helperText: settings.iosFormat.detailedDescription,
+                    ),
                   ),
                 ],
               ),
             ),
-          ),
-        ),
-
-        Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: EditorColors.inputBackground,
-            borderRadius: BorderRadius.circular(4),
-            border: Border.all(color: EditorColors.border),
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Left Column: Preset with recommendations (flex 4)
-              Expanded(
-                flex: 4,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildDropdownColumn<GameType>(
-                      label: '프리셋',
-                      value: settings.gameType,
-                      items: GameType.values,
-                      onChanged: (v) {
-                        notifier.updateGameType(v!);
-                        _updatePreview(); // Trigger preview refresh on preset change
-                      },
-                      itemLabelBuilder: (i) => i.displayName,
-                    ),
-                    const SizedBox(height: 16),
-                    // Recommendations
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: EditorColors.surface,
-                        borderRadius: BorderRadius.circular(4),
-                        border: Border.all(color: EditorColors.border.withValues(alpha: 0.5)),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _buildRecommendationRow(
-                            'Android',
-                            settings.gameType.defaultAndroidFormat.displayName,
-                            settings.gameType.defaultAndroidFormat.compressionDescription,
-                          ),
-                          const SizedBox(height: 8),
-                          _buildRecommendationRow(
-                            'iOS',
-                            settings.gameType.defaultIOSFormat.displayName,
-                            settings.gameType.defaultIOSFormat.compressionDescription,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 24),
-
-              // Right Column: Format Type (flex 6)
-              Expanded(
-                flex: 6,
-                child: _buildDropdownColumn<TextureCompressionFormat>(
-                  label: '포맷 타입',
-                  value: settings.iosFormat,
-                  items: TextureCompressionFormat.values,
-                  onChanged: (v) {
-                    notifier.updateIOSFormat(v!);
-                    _updatePreview(); // Trigger preview refresh on format change
-                  },
-                  itemLabelBuilder: (i) => '${i.displayName}  -  ${i.compressionDescription}',
-                  helperText: settings.iosFormat.detailedDescription,
-                ),
-              ),
-            ],
           ),
         ),
       ],
@@ -563,6 +691,7 @@ class _ExportDialogState extends ConsumerState<ExportDialog> {
     final animationState = ref.watch(animationProvider);
     final hasAnimations = animationState.sequences.isNotEmpty;
     final animationCount = animationState.sequences.length;
+    final textureSettings = ref.watch(texturePackingSettingsProvider);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -581,17 +710,22 @@ class _ExportDialogState extends ConsumerState<ExportDialog> {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // 체크박스
-                  SizedBox(
-                    height: 20,
-                    width: 20,
-                    child: Checkbox(
-                      value: _exportPng,
-                      onChanged: (v) => setState(() => _exportPng = v ?? true),
-                      activeColor: EditorColors.primary,
-                      side: const BorderSide(color: EditorColors.border, width: 1.5),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(3)),
-                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  // 체크박스 - 텍스처 압축 ON일 때 체크된 상태로 비활성화
+                  Opacity(
+                    opacity: _enableTextureCompression ? 0.5 : 1.0,
+                    child: SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: Checkbox(
+                        value: _enableTextureCompression ? true : _exportPng,
+                        onChanged: _enableTextureCompression
+                            ? null // 비활성화
+                            : (v) => setState(() => _exportPng = v ?? true),
+                        activeColor: EditorColors.primary,
+                        side: const BorderSide(color: EditorColors.border, width: 1.5),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(3)),
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -606,17 +740,46 @@ class _ExportDialogState extends ConsumerState<ExportDialog> {
                               style: TextStyle(
                                 fontSize: 13,
                                 fontWeight: FontWeight.w500,
-                                color: _exportPng ? EditorColors.iconDefault : EditorColors.iconDisabled,
+                                color: _enableTextureCompression
+                                    ? EditorColors.iconDisabled
+                                    : (_exportPng ? EditorColors.iconDefault : EditorColors.iconDisabled),
                               ),
                             ),
                             const SizedBox(width: 12),
-                            // 포맷 선택 드롭다운
-                            _buildFormatDropdown(),
+                            // 텍스처 압축 ON일 때: ASTC&KTX 고정 표시 (비활성화), OFF일 때: 일반 포맷 드롭다운
+                            if (_enableTextureCompression)
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: EditorColors.surface,
+                                  borderRadius: BorderRadius.circular(4),
+                                  border: Border.all(color: EditorColors.border),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.compress, size: 14, color: EditorColors.iconDisabled),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      'ASTC&KTX',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w500,
+                                        color: EditorColors.iconDisabled,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              )
+                            else
+                              _buildFormatDropdown(),
                           ],
                         ),
-                        const SizedBox(height: 8),
-                        // 품질/압축 슬라이더 (PNG가 아닌 경우만)
-                        if (_exportPng) _buildQualitySlider(),
+                        // 품질/압축 슬라이더 (텍스처 압축 OFF이고 PNG 내보내기일 때만)
+                        if (_exportPng && !_enableTextureCompression) ...[
+                          const SizedBox(height: 8),
+                          _buildQualitySlider(),
+                        ],
                       ],
                     ),
                   ),
@@ -1081,10 +1244,18 @@ class _ExportDialogState extends ConsumerState<ExportDialog> {
                   ),
                 ),
                 const Spacer(),
-                // Stats container - 텍스처 압축 포맷에 따른 예상 용량
+                // 파일명 + 용량 표시
                 Builder(
                   builder: (context) {
                     final textureSettings = ref.watch(texturePackingSettingsProvider);
+                    final extension = _enableTextureCompression
+                        ? textureSettings.iosFormat.fileExtension
+                        : _imageFormat.extension;
+                    final fileName = _nameController.text.isEmpty
+                        ? 'untitled'
+                        : _nameController.text;
+
+                    // 파일 크기 계산
                     final bpp = textureSettings.iosFormat.bitsPerPixel;
                     final sizeBytes = _previewPackingResult != null
                         ? (_previewPackingResult!.atlasWidth * _previewPackingResult!.atlasHeight * bpp / 8)
@@ -1104,11 +1275,28 @@ class _ExportDialogState extends ConsumerState<ExportDialog> {
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.memory, size: 16, color: EditorColors.secondary),
-                          const SizedBox(width: 8),
+                          // 파일명
+                          Text(
+                            '$fileName.$extension',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: EditorColors.iconDefault,
+                              fontFamily: 'monospace',
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Container(
+                            width: 1,
+                            height: 14,
+                            color: EditorColors.border,
+                          ),
+                          const SizedBox(width: 12),
+                          // 용량
+                          const Icon(Icons.memory, size: 14, color: EditorColors.secondary),
+                          const SizedBox(width: 6),
                           Text(
                             sizeText,
-                            style: const TextStyle(fontSize: 13, color: EditorColors.iconDefault, fontFamily: 'monospace', fontWeight: FontWeight.bold),
+                            style: const TextStyle(fontSize: 12, color: EditorColors.iconDefault, fontFamily: 'monospace', fontWeight: FontWeight.bold),
                           ),
                         ],
                       ),

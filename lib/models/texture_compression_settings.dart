@@ -100,9 +100,9 @@ enum TextureCompressionFormat {
   String get detailedDescription {
     switch (this) {
       case TextureCompressionFormat.etc2_4bit:
-        return '${bitsPerPixel} bpp · $platformSupport\nRGB 전용, 알파 없음. 불투명 텍스처에 최적';
+        return '${bitsPerPixel} bpp · $platformSupport\nRGB 전용, 알파 없음. 블러링/색 이동(흐려짐) 아티팩트 발생 가능';
       case TextureCompressionFormat.etc2_8bit:
-        return '${bitsPerPixel} bpp · $platformSupport\nRGBA 지원. 투명 텍스처 호환';
+        return '${bitsPerPixel} bpp · $platformSupport\nRGBA 지원. 블러링/색 이동(흐려짐) 아티팩트 발생 가능';
       case TextureCompressionFormat.astc4x4:
         return '${bitsPerPixel} bpp · $platformSupport\n최고 품질, UI/텍스트에 권장';
       case TextureCompressionFormat.astc6x6:
@@ -115,6 +115,27 @@ enum TextureCompressionFormat {
         return '${bitsPerPixel} bpp · $platformSupport\n최대 압축, 품질 손실 있음';
     }
   }
+
+  /// 출력 파일 확장자 (ETC2: .ktx, ASTC: .astc)
+  String get fileExtension {
+    switch (this) {
+      case TextureCompressionFormat.etc2_4bit:
+      case TextureCompressionFormat.etc2_8bit:
+        return 'ktx';
+      case TextureCompressionFormat.astc4x4:
+      case TextureCompressionFormat.astc6x6:
+      case TextureCompressionFormat.astc8x8:
+      case TextureCompressionFormat.astc10x10:
+      case TextureCompressionFormat.astc12x12:
+        return 'astc';
+    }
+  }
+
+  /// ETC2 포맷 여부
+  bool get isETC2 => this == etc2_4bit || this == etc2_8bit;
+
+  /// ASTC 포맷 여부
+  bool get isASTC => !isETC2;
 }
 
 /// ASTC 블록 크기 옵션

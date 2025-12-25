@@ -478,6 +478,68 @@ class MultiSpriteNotifier extends StateNotifier<MultiSpriteState> {
       nextId: maxIdNum + 1,
     );
   }
+
+  /// Resize all sprites by a scale factor
+  Future<void> resizeAllSprites(double scale) async {
+    if (scale == 1.0) return;
+
+    // Import dynamically to avoid circular dependency
+    final service = await _importResizeService();
+
+    final updatedSprites = <String, List<SpriteRegion>>{};
+
+    for (final entry in state.spritesBySource.entries) {
+      final resizedSprites = <SpriteRegion>[];
+      for (final sprite in entry.value) {
+        final resized = await service.resizeSprite(sprite, scale);
+        resizedSprites.add(resized);
+      }
+      updatedSprites[entry.key] = resizedSprites;
+    }
+
+    state = state.copyWith(spritesBySource: updatedSprites);
+  }
+
+  Future<_ResizeHelper> _importResizeService() async {
+    return const _ResizeHelper();
+  }
+}
+
+/// Helper class to access SpriteResizeService
+class _ResizeHelper {
+  const _ResizeHelper();
+
+  Future<SpriteRegion> resizeSprite(SpriteRegion sprite, double scale) async {
+    // Scale sourceRect
+    final newSourceRect = Rect.fromLTWH(
+      sprite.sourceRect.left * scale,
+      sprite.sourceRect.top * scale,
+      (sprite.sourceRect.width * scale).clamp(1, 8192),
+      (sprite.sourceRect.height * scale).clamp(1, 8192),
+    );
+
+    // Scale trimmedRect if exists
+    Rect? newTrimmedRect;
+    if (sprite.trimmedRect != null) {
+      newTrimmedRect = Rect.fromLTWH(
+        sprite.trimmedRect!.left * scale,
+        sprite.trimmedRect!.top * scale,
+        (sprite.trimmedRect!.width * scale).clamp(1, 8192),
+        (sprite.trimmedRect!.height * scale).clamp(1, 8192),
+      );
+    }
+
+    // For now, just update the rect without resizing imageBytes
+    // Full image resize would require async image processing
+    return sprite.copyWith(
+      sourceRect: newSourceRect,
+      trimmedRect: newTrimmedRect,
+      // Note: imageBytes and uiImage would need to be resized separately
+      // for now we clear them to force re-extraction from source
+      clearImageBytes: sprite.imageBytes != null,
+      clearUiImage: sprite.uiImage != null,
+    );
+  }
 }
 
 /// Provider for multi-sprite state

@@ -1,7 +1,34 @@
-import 'dart:math' as math;
 import 'dart:ui';
 
 import '../models/sprite_region.dart';
+
+/// Sorting strategy for sprites before packing
+enum SortStrategy {
+  /// Sort by area (largest first)
+  area,
+  /// Sort by height (tallest first)
+  height,
+  /// Sort by width (widest first)
+  width,
+  /// Sort by max(width, height) (largest dimension first)
+  maxSide,
+  /// Sort by perimeter (largest first)
+  perimeter,
+}
+
+/// Placement heuristic for MaxRects algorithm
+enum PlacementHeuristic {
+  /// Best Short Side Fit - minimize shorter leftover side
+  bssf,
+  /// Best Long Side Fit - minimize longer leftover side
+  blsf,
+  /// Best Area Fit - minimize leftover area
+  baf,
+  /// Bottom-Left rule - place at lowest y, then leftmost x
+  bl,
+  /// Contact Point rule - maximize touching edges
+  cp,
+}
 
 /// Result of packing a single sprite
 class PackedSprite {
@@ -56,14 +83,21 @@ class PackingResult {
   bool get isComplete => packedSprites.isNotEmpty && failedSprites.isEmpty;
 }
 
-/// MaxRects bin packing algorithm with Best Short Side Fit heuristic
+/// MaxRects bin packing algorithm with multiple heuristics
 ///
 /// Implements:
 /// - MaxRects data structure for free rectangle management
-/// - BSSF (Best Short Side Fit) heuristic for optimal placement
+/// - Multiple placement heuristics (BSSF, BLSF, BAF, BL, CP)
+/// - Multiple sorting strategies (area, height, width, maxSide, perimeter)
+/// - Automatic selection of best combination for optimal packing
 /// - Guillotine split for free area subdivision
-/// - Area-based descending sort before packing
 class BinPackingService {
+  /// All sorting strategies to try
+  static const _sortStrategies = SortStrategy.values;
+
+  /// All placement heuristics to try
+  static const _placementHeuristics = PlacementHeuristic.values;
+
   /// Pack sprites into an atlas using MaxRects algorithm
   ///
   /// [sprites] - List of sprite regions to pack
@@ -88,25 +122,30 @@ class BinPackingService {
       );
     }
 
-    // Sort sprites by area (descending) for better packing
-    final sortedSprites = _sortByAreaDescending(sprites);
-
     // Ensure minimum size can fit largest sprite
-    final maxSpriteWidth = sortedSprites.map((s) => s.width + padding * 2).reduce((a, b) => a > b ? a : b);
-    final maxSpriteHeight = sortedSprites.map((s) => s.height + padding * 2).reduce((a, b) => a > b ? a : b);
+    final maxSpriteWidth = sprites.map((s) => s.width + padding * 2).reduce((a, b) => a > b ? a : b);
+    final maxSpriteHeight = sprites.map((s) => s.height + padding * 2).reduce((a, b) => a > b ? a : b);
 
     // Start with smallest power-of-2 that fits largest sprite
     int atlasWidth = _nextPowerOfTwo(maxSpriteWidth);
     int atlasHeight = _nextPowerOfTwo(maxSpriteHeight);
 
     // Try packing, grow atlas if needed
-    PackingResult? result;
-    while (atlasWidth <= maxWidth && atlasHeight <= maxHeight) {
-      result = _tryPack(sortedSprites, atlasWidth, atlasHeight, padding, allowRotation);
+    PackingResult? bestResult;
 
-      if (result.isComplete) {
+    while (atlasWidth <= maxWidth && atlasHeight <= maxHeight) {
+      // Try all combinations of sort strategies and placement heuristics
+      bestResult = _findBestPacking(
+        sprites,
+        atlasWidth,
+        atlasHeight,
+        padding,
+        allowRotation,
+      );
+
+      if (bestResult.isComplete) {
         // Shrink atlas to minimum required size
-        final shrunkResult = _shrinkAtlas(result, powerOfTwo);
+        final shrunkResult = _shrinkAtlas(bestResult, powerOfTwo);
         return shrunkResult;
       }
 
@@ -119,7 +158,7 @@ class BinPackingService {
     }
 
     // Return partial result if we hit max size
-    return result ?? const PackingResult(
+    return bestResult ?? const PackingResult(
       packedSprites: [],
       atlasWidth: 0,
       atlasHeight: 0,
@@ -127,10 +166,95 @@ class BinPackingService {
     );
   }
 
-  /// Sort sprites by area in descending order
-  List<SpriteRegion> _sortByAreaDescending(List<SpriteRegion> sprites) {
+  /// Find the best packing by trying all sort/heuristic combinations
+  PackingResult _findBestPacking(
+    List<SpriteRegion> sprites,
+    int atlasWidth,
+    int atlasHeight,
+    int padding,
+    bool allowRotation,
+  ) {
+    PackingResult? bestResult;
+    double bestEfficiency = -1;
+
+    for (final sortStrategy in _sortStrategies) {
+      final sortedSprites = _sortSprites(sprites, sortStrategy);
+
+      for (final heuristic in _placementHeuristics) {
+        final result = _tryPack(
+          sortedSprites,
+          atlasWidth,
+          atlasHeight,
+          padding,
+          allowRotation,
+          heuristic,
+        );
+
+        if (result.isComplete) {
+          // Calculate effective efficiency (smaller atlas = better)
+          final usedArea = result.packedSprites.fold<int>(
+            0,
+            (sum, p) => sum + (p.width * p.height),
+          );
+          final maxX = result.packedSprites.fold<double>(
+            0,
+            (max, p) => p.packedRect.right > max ? p.packedRect.right : max,
+          );
+          final maxY = result.packedSprites.fold<double>(
+            0,
+            (max, p) => p.packedRect.bottom > max ? p.packedRect.bottom : max,
+          );
+          final actualArea = maxX * maxY;
+          final efficiency = actualArea > 0 ? usedArea / actualArea : 0.0;
+
+          if (efficiency > bestEfficiency) {
+            bestEfficiency = efficiency;
+            bestResult = result;
+          }
+        }
+      }
+    }
+
+    // If no complete result found, return best partial
+    if (bestResult == null) {
+      // Just use area sort with BSSF as fallback
+      final sorted = _sortSprites(sprites, SortStrategy.area);
+      return _tryPack(sorted, atlasWidth, atlasHeight, padding, allowRotation, PlacementHeuristic.bssf);
+    }
+
+    return bestResult;
+  }
+
+  /// Sort sprites by given strategy in descending order
+  List<SpriteRegion> _sortSprites(List<SpriteRegion> sprites, SortStrategy strategy) {
     final sorted = List<SpriteRegion>.from(sprites);
-    sorted.sort((a, b) => b.area.compareTo(a.area));
+
+    switch (strategy) {
+      case SortStrategy.area:
+        sorted.sort((a, b) => b.area.compareTo(a.area));
+        break;
+      case SortStrategy.height:
+        sorted.sort((a, b) => b.height.compareTo(a.height));
+        break;
+      case SortStrategy.width:
+        sorted.sort((a, b) => b.width.compareTo(a.width));
+        break;
+      case SortStrategy.maxSide:
+        sorted.sort((a, b) {
+          final maxA = a.width > a.height ? a.width : a.height;
+          final maxB = b.width > b.height ? b.width : b.height;
+          return maxB.compareTo(maxA);
+        });
+        break;
+      case SortStrategy.perimeter:
+        sorted.sort((a, b) {
+          final perimA = 2 * (a.width + a.height);
+          final perimB = 2 * (b.width + b.height);
+          return perimB.compareTo(perimA);
+        });
+        break;
+    }
+
     return sorted;
   }
 
@@ -141,6 +265,7 @@ class BinPackingService {
     int atlasHeight,
     int padding,
     bool allowRotation,
+    PlacementHeuristic heuristic,
   ) {
     // Initialize free rectangles with full atlas area
     final freeRects = <Rect>[
@@ -154,12 +279,14 @@ class BinPackingService {
       final spriteWidth = sprite.width + padding * 2;
       final spriteHeight = sprite.height + padding * 2;
 
-      // Find best position using BSSF heuristic (with optional rotation)
+      // Find best position using selected heuristic (with optional rotation)
       final placement = _findBestPositionWithRotation(
         freeRects,
         spriteWidth,
         spriteHeight,
         allowRotation,
+        heuristic,
+        packedSprites, // Needed for Contact Point heuristic
       );
 
       if (placement != null) {
@@ -212,41 +339,40 @@ class BinPackingService {
     int spriteWidth,
     int spriteHeight,
     bool allowRotation,
+    PlacementHeuristic heuristic,
+    List<PackedSprite> packedSprites,
   ) {
     _PlacementResult? bestResult;
-    int bestShortSide = 0x7FFFFFFF;
-    int bestLongSide = 0x7FFFFFFF;
+    double bestScore = double.infinity;
 
     // Try original orientation
-    final normalResult = _findBestPosition(freeRects, spriteWidth, spriteHeight);
+    final normalResult = _findBestPosition(
+      freeRects, spriteWidth, spriteHeight, heuristic, packedSprites);
     if (normalResult != null) {
-      final leftoverX = (normalResult.width - spriteWidth).round();
-      final leftoverY = (normalResult.height - spriteHeight).round();
-      final shortSide = leftoverX < leftoverY ? leftoverX : leftoverY;
-      final longSide = leftoverX > leftoverY ? leftoverX : leftoverY;
+      final score = _calculateScore(
+        normalResult, spriteWidth, spriteHeight, heuristic, packedSprites);
 
       bestResult = _PlacementResult(
-        rect: Rect.fromLTWH(normalResult.left, normalResult.top, spriteWidth.toDouble(), spriteHeight.toDouble()),
+        rect: Rect.fromLTWH(normalResult.left, normalResult.top,
+            spriteWidth.toDouble(), spriteHeight.toDouble()),
         rotation: 0,
       );
-      bestShortSide = shortSide;
-      bestLongSide = longSide;
+      bestScore = score;
     }
 
     // Try 90 degree rotation if allowed and sprite is not square
     if (allowRotation && spriteWidth != spriteHeight) {
-      final rotatedResult = _findBestPosition(freeRects, spriteHeight, spriteWidth);
+      final rotatedResult = _findBestPosition(
+        freeRects, spriteHeight, spriteWidth, heuristic, packedSprites);
       if (rotatedResult != null) {
-        final leftoverX = (rotatedResult.width - spriteHeight).round();
-        final leftoverY = (rotatedResult.height - spriteWidth).round();
-        final shortSide = leftoverX < leftoverY ? leftoverX : leftoverY;
-        final longSide = leftoverX > leftoverY ? leftoverX : leftoverY;
+        final score = _calculateScore(
+          rotatedResult, spriteHeight, spriteWidth, heuristic, packedSprites);
 
-        // Use rotated if it's a better fit
-        if (shortSide < bestShortSide ||
-            (shortSide == bestShortSide && longSide < bestLongSide)) {
+        // Use rotated if it's a better fit (lower score is better)
+        if (score < bestScore) {
           bestResult = _PlacementResult(
-            rect: Rect.fromLTWH(rotatedResult.left, rotatedResult.top, spriteHeight.toDouble(), spriteWidth.toDouble()),
+            rect: Rect.fromLTWH(rotatedResult.left, rotatedResult.top,
+                spriteHeight.toDouble(), spriteWidth.toDouble()),
             rotation: 90,
           );
         }
@@ -256,37 +382,111 @@ class BinPackingService {
     return bestResult;
   }
 
-  /// Find best position using Best Short Side Fit heuristic
-  /// Returns the position rect or null if no fit found
+  /// Calculate placement score based on heuristic (lower is better)
+  double _calculateScore(
+    Rect freeRect,
+    int spriteWidth,
+    int spriteHeight,
+    PlacementHeuristic heuristic,
+    List<PackedSprite> packedSprites,
+  ) {
+    final leftoverX = (freeRect.width - spriteWidth).toDouble();
+    final leftoverY = (freeRect.height - spriteHeight).toDouble();
+
+    switch (heuristic) {
+      case PlacementHeuristic.bssf:
+        // Best Short Side Fit - minimize shorter leftover
+        final shortSide = leftoverX < leftoverY ? leftoverX : leftoverY;
+        final longSide = leftoverX > leftoverY ? leftoverX : leftoverY;
+        return shortSide * 10000 + longSide;
+
+      case PlacementHeuristic.blsf:
+        // Best Long Side Fit - minimize longer leftover
+        final shortSide = leftoverX < leftoverY ? leftoverX : leftoverY;
+        final longSide = leftoverX > leftoverY ? leftoverX : leftoverY;
+        return longSide * 10000 + shortSide;
+
+      case PlacementHeuristic.baf:
+        // Best Area Fit - minimize leftover area
+        return freeRect.width * freeRect.height - spriteWidth * spriteHeight;
+
+      case PlacementHeuristic.bl:
+        // Bottom-Left rule - minimize y, then x
+        return freeRect.top * 10000 + freeRect.left;
+
+      case PlacementHeuristic.cp:
+        // Contact Point - maximize contact with placed sprites or edges
+        final spriteRect = Rect.fromLTWH(
+          freeRect.left, freeRect.top,
+          spriteWidth.toDouble(), spriteHeight.toDouble(),
+        );
+        final contactLength = _calculateContactLength(spriteRect, packedSprites);
+        // Negative because higher contact is better
+        return -contactLength.toDouble();
+    }
+  }
+
+  /// Calculate total contact length with edges and other sprites
+  int _calculateContactLength(Rect spriteRect, List<PackedSprite> packedSprites) {
+    int contactLength = 0;
+
+    // Contact with left edge (x=0)
+    if (spriteRect.left == 0) {
+      contactLength += spriteRect.height.round();
+    }
+
+    // Contact with top edge (y=0)
+    if (spriteRect.top == 0) {
+      contactLength += spriteRect.width.round();
+    }
+
+    // Contact with other sprites
+    for (final packed in packedSprites) {
+      final other = packed.packedRect;
+
+      // Check horizontal contact (left/right edges touching)
+      if (spriteRect.right == other.left || spriteRect.left == other.right) {
+        final overlapTop = spriteRect.top > other.top ? spriteRect.top : other.top;
+        final overlapBottom = spriteRect.bottom < other.bottom ? spriteRect.bottom : other.bottom;
+        if (overlapBottom > overlapTop) {
+          contactLength += (overlapBottom - overlapTop).round();
+        }
+      }
+
+      // Check vertical contact (top/bottom edges touching)
+      if (spriteRect.bottom == other.top || spriteRect.top == other.bottom) {
+        final overlapLeft = spriteRect.left > other.left ? spriteRect.left : other.left;
+        final overlapRight = spriteRect.right < other.right ? spriteRect.right : other.right;
+        if (overlapRight > overlapLeft) {
+          contactLength += (overlapRight - overlapLeft).round();
+        }
+      }
+    }
+
+    return contactLength;
+  }
+
+  /// Find best position using selected heuristic
+  /// Returns the free rect where sprite should be placed or null if no fit found
   Rect? _findBestPosition(
     List<Rect> freeRects,
     int spriteWidth,
     int spriteHeight,
+    PlacementHeuristic heuristic,
+    List<PackedSprite> packedSprites,
   ) {
     Rect? bestRect;
-    int bestShortSide = 0x7FFFFFFF; // Max int
-    int bestLongSide = 0x7FFFFFFF;
+    double bestScore = double.infinity;
 
     for (final freeRect in freeRects) {
       // Check if sprite fits in this free rect
       if (spriteWidth <= freeRect.width && spriteHeight <= freeRect.height) {
-        final leftoverX = (freeRect.width - spriteWidth).round();
-        final leftoverY = (freeRect.height - spriteHeight).round();
+        final score = _calculateScore(
+          freeRect, spriteWidth, spriteHeight, heuristic, packedSprites);
 
-        final shortSide = leftoverX < leftoverY ? leftoverX : leftoverY;
-        final longSide = leftoverX > leftoverY ? leftoverX : leftoverY;
-
-        // BSSF: minimize the shorter leftover side
-        if (shortSide < bestShortSide ||
-            (shortSide == bestShortSide && longSide < bestLongSide)) {
-          bestRect = Rect.fromLTWH(
-            freeRect.left,
-            freeRect.top,
-            spriteWidth.toDouble(),
-            spriteHeight.toDouble(),
-          );
-          bestShortSide = shortSide;
-          bestLongSide = longSide;
+        if (score < bestScore) {
+          bestRect = freeRect;
+          bestScore = score;
         }
       }
     }

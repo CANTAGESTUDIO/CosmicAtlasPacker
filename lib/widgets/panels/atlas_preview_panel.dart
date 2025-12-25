@@ -11,6 +11,7 @@ import '../../services/bin_packing_service.dart';
 import '../../services/image_loader_service.dart';
 import '../../theme/editor_colors.dart';
 import '../dialogs/background_remove_dialog.dart';
+import '../dialogs/canvas_size_dialog.dart';
 
 /// Atlas Preview Panel - displays packed atlas result with interactive zoom/pan
 class AtlasPreviewPanel extends ConsumerStatefulWidget {
@@ -88,11 +89,7 @@ class _AtlasPreviewPanelState extends ConsumerState<AtlasPreviewPanel> {
       color: EditorColors.canvasBackground,
       child: Column(
         children: [
-          // Atlas info header
-          _buildInfoHeader(atlasSize, efficiency, packingResult),
-          // Divider
-          Container(height: 1, color: EditorColors.divider),
-          // Atlas preview canvas
+          // Atlas preview canvas (header info moved to right panel)
           Expanded(
             child: LayoutBuilder(
               builder: (context, constraints) {
@@ -241,39 +238,6 @@ class _AtlasPreviewPanelState extends ConsumerState<AtlasPreviewPanel> {
     );
   }
 
-  Widget _buildInfoHeader(
-    (int, int) atlasSize,
-    double efficiency,
-    PackingResult result,
-  ) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      color: EditorColors.panelBackground,
-      child: Row(
-        children: [
-          // Atlas size
-          Icon(Icons.aspect_ratio, size: 16, color: EditorColors.iconDefault),
-          const SizedBox(width: 6),
-          Text(
-            '${atlasSize.$1} × ${atlasSize.$2}',
-            style: TextStyle(
-              fontSize: 12,
-              color: EditorColors.iconDefault,
-              fontFamily: 'monospace',
-            ),
-          ),
-          const SizedBox(width: 16),
-          // Sprite count
-          Icon(Icons.layers, size: 16, color: EditorColors.iconDefault),
-          const SizedBox(width: 6),
-          Text(
-            '${result.packedSprites.length} sprites',
-            style: TextStyle(fontSize: 12, color: EditorColors.iconDefault),
-          ),
-        ],
-      ),
-    );
-  }
 
   Widget _buildZoomControls(Size viewportSize, int atlasWidth, int atlasHeight) {
     final zoomLevel = ref.watch(zoomLevelProvider);
@@ -348,6 +312,8 @@ class _AtlasPreviewPanelState extends ConsumerState<AtlasPreviewPanel> {
     final cropValue = settings.edgeCrop;
     final isActive = cropValue > 0;
     final efficiency = ref.watch(packingEfficiencyProvider);
+    final atlasSize = ref.watch(atlasSizeProvider);
+    final packingResult = ref.watch(packingResultProvider);
 
     return Container(
       width: 220,
@@ -534,29 +500,88 @@ class _AtlasPreviewPanelState extends ConsumerState<AtlasPreviewPanel> {
               onTap: () => notifier.toggleForceSquare(),
             ),
 
-            // --- Background Remove Button ---
+            // --- Action Buttons ---
             const SizedBox(height: 12),
             Container(
               height: 1,
               color: EditorColors.border.withValues(alpha: 0.5),
             ),
             const SizedBox(height: 10),
-            _buildBgRemoveButton(context, ref),
+            Row(
+              children: [
+                Expanded(child: _buildBgRemoveButton(context, ref)),
+                const SizedBox(width: 6),
+                Expanded(child: _buildCanvasSizeButton(context, ref)),
+              ],
+            ),
 
-            // --- Efficiency ---
+            // --- Atlas Info ---
             const SizedBox(height: 12),
             Container(
               height: 1,
               color: EditorColors.border.withValues(alpha: 0.5),
             ),
             const SizedBox(height: 10),
-            Text(
-              'Efficiency: ${efficiency.toStringAsFixed(1)}%',
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w500,
-                color: _getEfficiencyColor(efficiency),
-              ),
+            // Size
+            Row(
+              children: [
+                Text(
+                  'Size: ',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: EditorColors.iconDisabled,
+                  ),
+                ),
+                Text(
+                  '${atlasSize.$1} × ${atlasSize.$2}',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: EditorColors.iconDefault,
+                    fontFamily: 'monospace',
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            // Sprites
+            Row(
+              children: [
+                Text(
+                  'Sprites: ',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: EditorColors.iconDisabled,
+                  ),
+                ),
+                Text(
+                  '${packingResult?.packedSprites.length ?? 0}',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: EditorColors.iconDefault,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            // Efficiency
+            Row(
+              children: [
+                Text(
+                  'Efficiency: ',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: EditorColors.iconDisabled,
+                  ),
+                ),
+                Text(
+                  '${efficiency.toStringAsFixed(1)}%',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                    color: _getEfficiencyColor(efficiency),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
@@ -663,25 +688,75 @@ class _AtlasPreviewPanelState extends ConsumerState<AtlasPreviewPanel> {
       child: MouseRegion(
         cursor: hasSource ? SystemMouseCursors.click : SystemMouseCursors.basic,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
           decoration: BoxDecoration(
             color: EditorColors.border,
             borderRadius: BorderRadius.circular(4),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(
                 Icons.format_color_reset,
-                size: 14,
+                size: 12,
                 color: hasSource ? EditorColors.iconDefault : EditorColors.iconDisabled,
               ),
-              const SizedBox(width: 6),
-              Text(
-                '배경색 제거',
-                style: TextStyle(
-                  fontSize: 11,
-                  color: hasSource ? EditorColors.iconDefault : EditorColors.iconDisabled,
+              const SizedBox(width: 4),
+              Flexible(
+                child: Text(
+                  '배경제거',
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: hasSource ? EditorColors.iconDefault : EditorColors.iconDisabled,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCanvasSizeButton(BuildContext context, WidgetRef ref) {
+    final packingResult = ref.watch(packingResultProvider);
+    final hasSprites = packingResult != null && packingResult.packedSprites.isNotEmpty;
+
+    return GestureDetector(
+      onTap: hasSprites
+          ? () async {
+              // TODO: Show canvas size dialog
+              await CanvasSizeDialog.show(context, ref);
+            }
+          : null,
+      child: MouseRegion(
+        cursor: hasSprites ? SystemMouseCursors.click : SystemMouseCursors.basic,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          decoration: BoxDecoration(
+            color: EditorColors.border,
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.aspect_ratio,
+                size: 12,
+                color: hasSprites ? EditorColors.iconDefault : EditorColors.iconDisabled,
+              ),
+              const SizedBox(width: 4),
+              Flexible(
+                child: Text(
+                  '캔버스',
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: hasSprites ? EditorColors.iconDefault : EditorColors.iconDisabled,
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],
