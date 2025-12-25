@@ -150,6 +150,23 @@ Documents are auto-classified by filename/path patterns during scanning:
 | security, critical | `security` |
 | others | `misc` |
 
+## Excluded Categories
+
+**AI MUST NOT scan or load documents for these categories:**
+
+| Pattern | Reason |
+|---------|--------|
+| label, labeling | 라벨링 시스템 - 필요시 수동 조회 |
+| history | 히스토리 로깅 - 작업 완료 시만 사용 |
+| brain, canvas | Brain 캔버스 - 별도 스킬로 관리 |
+
+**These files should be excluded from scanning:**
+- `.claude/rules/labeling.md`
+- `.claude/rules/history.md`
+- `Docs/Labels/**/*.md`
+- `Docs/History/**/*.md`
+- `Docs/Brain/**/*`
+
 ---
 
 ## Config File Schema (smart-rules.yaml)

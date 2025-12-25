@@ -25,7 +25,6 @@ categories:
     documents:
       - .claude/rules/architecture-management.md
       - Docs/Rules/ARCHITECTURE_RULES.md
-      - Docs/Labels/LABEL_ARCHITECTURE.md
 
   coding:
     keywords:
@@ -57,8 +56,8 @@ categories:
     documents:
       - Docs/UX/IA.md
       - Docs/UX/Wireframes/Overview.md
-      - Docs/Labels/LABEL_UI_LAYOUT.md
-      - Docs/Labels/LABEL_UI_COMPONENT.md
+      - Docs/UX/DesignSystem/Components.md
+      - Docs/UX/DesignSystem/Layout.md
 
   design:
     keywords:
@@ -152,42 +151,6 @@ categories:
       - Docs/Patterns/Flutter-Desktop-Menu-Bar-Pattern.md
       - Docs/Patterns/Flutter-Desktop-Keyboard-Shortcuts-Pattern.md
       - Docs/Patterns/Flutter-Desktop-State-Management-Pattern.md
-
-  labels:
-    keywords:
-      - label
-      - 라벨
-      - 레이블
-      - naming
-      - 네이밍
-    documents:
-      - .claude/rules/labeling.md
-      - Docs/Labels/LABEL_UI_LAYOUT.md
-      - Docs/Labels/LABEL_UI_COMPONENT.md
-      - Docs/Labels/LABEL_ARCHITECTURE.md
-      - Docs/Labels/LABEL_STATUS_MESSAGE.md
-
-  history:
-    keywords:
-      - history
-      - 히스토리
-      - log
-      - 로그
-      - 기록
-    documents:
-      - .claude/rules/history.md
-
-  brain:
-    keywords:
-      - brain
-      - 브레인
-      - canvas
-      - 캔버스
-      - memo
-      - 메모
-    documents:
-      - Docs/Index/BRAIN_FORMAT.md
-      - Docs/Rules/BRAIN_GUIDE.md
 
 # Composite categories (multiple categories combined)
 composites:

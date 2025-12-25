@@ -558,18 +558,20 @@ class ExportService {
         }
       } else {
         // Fallback: extract from source image (for sprites without extracted data)
-        final sourceImage = sourceImages[sourceId] as img.Image?;
+        // Use 'default' key as fallback when sourceFileId is null (legacy single-image mode)
+        final effectiveSourceId = sourceId ?? 'default';
+        final sourceImage = sourceImages[effectiveSourceId] as img.Image?;
         if (sourceImage == null) continue;
 
-        final sourceRect = sprite.sourceRect;
+        final effectiveRect = sprite.effectiveRect;
 
-        // Extract sprite region from source image
+        // Extract sprite region from source image (using effectiveRect for trim support)
         img.Image spriteImage = img.copyCrop(
           sourceImage,
-          x: sourceRect.left.round(),
-          y: sourceRect.top.round(),
-          width: sourceRect.width.round(),
-          height: sourceRect.height.round(),
+          x: effectiveRect.left.round(),
+          y: effectiveRect.top.round(),
+          width: effectiveRect.width.round(),
+          height: effectiveRect.height.round(),
         );
 
         // Apply erosion if needed

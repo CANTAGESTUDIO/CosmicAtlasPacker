@@ -36,6 +36,21 @@ This is a **Flutter Desktop** project for cross-platform desktop applications (m
 | Windows | `flutter build windows` |
 | Linux | `flutter build linux` |
 
+### Smart Rules Integration
+
+> AI는 작업 시작 전 `smart-rules` 스킬을 자동으로 호출하여 관련 규칙 문서를 로드합니다.
+
+**자동 호출 상황:**
+- `TodoWrite` 도구 사용 직후 (todo 내용 분석 → 관련 규칙 로드)
+- 구현/버그수정/리팩토링 요청 시
+
+**수동 명령어:**
+| Command | Description |
+|---------|-------------|
+| `smart-rules init` | 프로젝트 스캔 후 설정 파일 생성 |
+| `smart-rules` | 현재 컨텍스트 기반 문서 로드 |
+| `smart-rules [category]` | 특정 카테고리 문서만 로드 |
+
 ## 📑 Separated Rule Files
 
 <!-- FORMAT_LOCK: Do not change table structure -->

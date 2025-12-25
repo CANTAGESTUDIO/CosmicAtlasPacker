@@ -19,6 +19,44 @@ updated: 2025-12-25T12:00
 ## Worker3
 
 ## Review
+- [ ] ExportDialog 프리뷰 패널에 원본 이미지 대신 패킹된 스프라이트들 표시 #bugfix #export !high
+  - [x] _generatePreview()에서 multiSpriteProvider 스프라이트 로드 확인
+  - [x] sprite.hasImageData 및 imageBytes null 여부 디버그 로그 추가
+  - [x] _generateAtlasPreviewImage() sourceImages 맵 구성 로직 점검
+  - [x] generateMultiSourceAtlasImage()에서 sprite.imageBytes 복사 로직 검증
+  - [x] 원본 이미지 대신 추출된 스프라이트 이미지 우선 사용하도록 분기 수정
+  - [x] atlasImage 캔버스에 스프라이트 픽셀 복사 좌표 정확성 확인
+  - [x] _convertImgToUiImage() 변환 결과 ui.Image 유효성 검증
+  - [x] CustomPaint 렌더링 시 이미지 표시 여부 테스트
+    > **BP** · Provider: ref.watch() 상태감지, null-safe 리스트 · imageBytes: hasImageData 선검증, RGBA 4채널 길이확인 · CustomPaint: shouldRepaint() 최적화, dispose() 메모리해제 · 비동기: Completer 패턴, mounted 체크, 5초 타임아웃 · 성능: 디바운스 300ms, RepaintBoundary 격리
+- [ ] ExportDialog 최초 오픈 시 파일명 입력 필드 비워두기 #ui #export !low
+  - [x] initState() 내 defaultName 변수 생성 로직 위치 확인
+  - [x] projectTitle 및 sourceImage.fileName 기반 이름 생성 코드 제거
+  - [x] _nameController를 빈 문자열('')로 초기화
+  - [x] _performExport()에서 빈 파일명 체크 로직 확인
+  - [x] canExport 조건에서 _nameController.text.isNotEmpty 유지 확인
+  - [x] 파일명 TextField에 placeholder hint 텍스트 적절성 검토
+    > **BP** · initState: 빈문자열 직접초기화, dispose() 해제 · 검증: text.isEmpty 체크, trim() 공백제거 · 버튼활성화: 다중조건 &&, canSubmit getter 분리 · UX: hintText 명확히, 비활성화 시각피드백
+- [ ] 텍스처 압축 포맷 드롭다운에서 ETC2 옵션 선택 불가 버그 수정 #bugfix #ui !medium
+  - [x] EditorDropdown의 MenuAnchor 메뉴 열기/닫기 동작 확인
+  - [x] TextureCompressionFormat.values에 etc2_4bit, etc2_8bit 포함 확인
+  - [x] _buildTextureCompressionSection()에서 items 파라미터 전달값 검증
+  - [x] MenuItemButton onPressed 콜백 내 onChanged(item) 호출 확인
+  - [x] ETC2 선택 시 notifier.updateIOSFormat() 정상 호출 여부 로그 추가
+  - [x] TextureCompressionFormat에서 supportsIOS=false인 ETC2 필터링 여부 확인
+  - [x] iosFormat 필드에 ETC2 할당 시 Provider 상태 업데이트 검증
+  - [x] 드롭다운 메뉴 닫힘 후 선택값 반영 UI 갱신 확인
+    > **BP** · MenuAnchor: controller.open()/close() 명시호출, onPressed null체크 · enum필터링: .where() 조건필터, supportsIOS 플래그확인, 빈리스트 폴백 · Provider: ref.read() for mutations, 상태변경 후 자동리빌드 · 디버깅: debugPrint 콜백확인, 선택값==현재값 비교로그
+- [ ] 포맷 타입 변경 시 최종 결과물 미리보기 갱신되지 않는 버그 수정 #bugfix #export !medium
+  - [x] _buildTextureCompressionSection() onChanged 콜백 로직 분석
+  - [x] notifier.updateIOSFormat() 호출 시 Provider 상태 변경 확인
+  - [x] build() 메서드 내 ref.watch(texturePackingSettingsProvider) 감지 확인
+  - [x] 포맷 변경 onChanged에서 setState() 또는 _updatePreview() 호출 추가
+  - [x] _updatePreview() 디바운스 타이머 300ms 정상 작동 확인
+  - [x] _generatePreview()에서 새 포맷 설정값 반영 여부 검증
+  - [x] 프리뷰 이미지 재생성 후 setState()로 UI 갱신 트리거
+  - [x] 포맷 변경 → 프리뷰 갱신 전체 플로우 테스트
+    > **BP** · ref.watch: build() 내 자동리빌드, select() 특정필드만 감시 · onChanged: setState() 또는 _updatePreview() 호출, async 에러핸들링 · 디바운스: Timer 300ms, 이전타이머 cancel() 필수, dispose() 정리 · 프리뷰재생성: 이전이미지 dispose(), mounted 체크, 로딩표시 · 테스트: 연속변경시 마지막값만 반영, race condition 방지
 - [ ] 텍스처 패커 모드 / 애니메이션 모드 전환 기능 구현 #feature !high
   - [x] EditorMode enum 생성 및 editorModeProvider 추가
   - [x] EditorToolbar에 모드 전환 토글 버튼(세그먼티드 버튼) 추가

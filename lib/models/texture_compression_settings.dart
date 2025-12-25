@@ -8,16 +8,15 @@ part 'texture_compression_settings.g.dart';
 /// iOS: ASTC 지원
 @JsonEnum(valueField: 'value')
 enum TextureCompressionFormat {
-  // ETC2 포맷 (Android 전용)
+  // ETC2 (품질 낮은 순)
   etc2_4bit('ETC2 4-bit', 'etc2_4bit', true, false),
   etc2_8bit('ETC2 8-bit', 'etc2_8bit', true, false),
-
-  // ASTC 포맷 (Android/iOS 공통)
-  astc4x4('ASTC 4x4', 'astc_4x4', true, true),
-  astc6x6('ASTC 6x6', 'astc_6x6', true, true),
-  astc8x8('ASTC 8x8', 'astc_8x8', true, true),
+  // ASTC (품질 낮은 순)
+  astc12x12('ASTC 12x12', 'astc_12x12', true, true),
   astc10x10('ASTC 10x10', 'astc_10x10', true, true),
-  astc12x12('ASTC 12x12', 'astc_12x12', true, true);
+  astc8x8('ASTC 8x8', 'astc_8x8', true, true),
+  astc6x6('ASTC 6x6', 'astc_6x6', true, true),
+  astc4x4('ASTC 4x4', 'astc_4x4', true, true);
 
   const TextureCompressionFormat(
     this.displayName,
@@ -83,6 +82,37 @@ enum TextureCompressionFormat {
         return 1.28;
       case TextureCompressionFormat.astc12x12:
         return 0.89;
+    }
+  }
+
+  /// 지원 플랫폼 문자열
+  String get platformSupport {
+    if (supportsAndroid && supportsIOS) {
+      return 'Android / iOS';
+    } else if (supportsAndroid) {
+      return 'Android (OpenGL ES 3.0+)';
+    } else {
+      return 'iOS';
+    }
+  }
+
+  /// 상세 설명 (helperText용)
+  String get detailedDescription {
+    switch (this) {
+      case TextureCompressionFormat.etc2_4bit:
+        return '${bitsPerPixel} bpp · $platformSupport\nRGB 전용, 알파 없음. 불투명 텍스처에 최적';
+      case TextureCompressionFormat.etc2_8bit:
+        return '${bitsPerPixel} bpp · $platformSupport\nRGBA 지원. 투명 텍스처 호환';
+      case TextureCompressionFormat.astc4x4:
+        return '${bitsPerPixel} bpp · $platformSupport\n최고 품질, UI/텍스트에 권장';
+      case TextureCompressionFormat.astc6x6:
+        return '${bitsPerPixel} bpp · $platformSupport\n품질/용량 균형, 범용 권장';
+      case TextureCompressionFormat.astc8x8:
+        return '${bitsPerPixel} bpp · $platformSupport\n높은 압축, 배경/환경에 적합';
+      case TextureCompressionFormat.astc10x10:
+        return '${bitsPerPixel} bpp · $platformSupport\n매우 높은 압축, 대형 텍스처용';
+      case TextureCompressionFormat.astc12x12:
+        return '${bitsPerPixel} bpp · $platformSupport\n최대 압축, 품질 손실 있음';
     }
   }
 }

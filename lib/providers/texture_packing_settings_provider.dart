@@ -91,15 +91,13 @@ class TexturePackingSettingsNotifier extends StateNotifier<TextureCompressionSet
 
   // ========== iOS Format Methods ==========
 
-  /// Update iOS compression format
+  /// Update compression format (used for both Android and iOS targeting)
   void updateIOSFormat(TextureCompressionFormat format) {
-    if (format.supportsIOS) {
-      state = state.copyWith(
-        iosFormat: format,
-        customPreset: true,
-      );
-      _saveSettings();
-    }
+    state = state.copyWith(
+      iosFormat: format,
+      customPreset: true,
+    );
+    _saveSettings();
   }
 
   // ========== ASTC Block Size Methods ==========

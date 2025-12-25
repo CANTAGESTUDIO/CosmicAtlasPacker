@@ -4,15 +4,13 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:image/image.dart' as img;
 
 import '../../models/texture_compression_settings.dart';
-import '../../providers/project_provider.dart';
-// import '../../providers/atlas_provider.dart'; // Removed
 import '../../providers/texture_packing_settings_provider.dart';
 import '../../providers/export_provider.dart';
 import '../../providers/packing_provider.dart';
 import '../../providers/sprite_provider.dart';
+import '../../providers/multi_sprite_provider.dart';
 import '../../providers/image_provider.dart';
 import '../../providers/animation_provider.dart';
 import '../../services/bin_packing_service.dart';
@@ -66,21 +64,12 @@ class _ExportDialogState extends ConsumerState<ExportDialog> {
   @override
   void initState() {
     super.initState();
-    final projectTitle = ref.read(projectTitleProvider);
-    final sourceImage = ref.read(sourceImageProvider);
 
     // Default path setup
     _pathController = TextEditingController(text: '/Users/Shared/AtlasExports');
-    
-    // Generate default filename
-    String defaultName = projectTitle.isEmpty ? 'atlas' : projectTitle;
-    if (sourceImage.fileName != null) {
-       defaultName = sourceImage.fileName!
-              .replaceAll(RegExp(r'\.[^.]+$'), '')
-              .replaceAll(RegExp(r'[^\w\-]'), '_') +
-          '_atlas';
-    }
-    _nameController = TextEditingController(text: defaultName);
+
+    // Start with empty filename - user should provide their own
+    _nameController = TextEditingController(text: '');
 
     // Initial Preview Generation
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -93,7 +82,7 @@ class _ExportDialogState extends ConsumerState<ExportDialog> {
     _pathController.dispose();
     _nameController.dispose();
     _debounceTimer?.cancel();
-    _previewUiImage?.dispose();
+    // _previewUiImage는 atlasPreviewImageProvider의 공유 리소스이므로 dispose하지 않음
     super.dispose();
   }
 
@@ -106,103 +95,34 @@ class _ExportDialogState extends ConsumerState<ExportDialog> {
   }
 
   Future<void> _generatePreview() async {
-    final sprites = ref.read(spriteProvider).sprites;
-    if (sprites.isEmpty) {
+    // 메인 화면과 동일한 패킹 결과 사용
+    final result = ref.read(packingResultProvider);
+
+    if (result == null || result.packedSprites.isEmpty) {
       setState(() {
         _previewPackingResult = null;
-        _previewUiImage?.dispose();
         _previewUiImage = null;
       });
       return;
     }
-
-    final atlasSettings = ref.read(atlasSettingsProvider);
-    final packingService = ref.read(binPackingServiceProvider);
-
-    final result = packingService.pack(
-      sprites,
-      maxWidth: atlasSettings.maxWidth,
-      maxHeight: atlasSettings.maxHeight,
-      padding: atlasSettings.padding,
-      powerOfTwo: atlasSettings.powerOfTwo,
-      allowRotation: atlasSettings.allowRotation,
-    );
 
     setState(() {
       _previewPackingResult = result;
       _isGeneratingPreview = true;
     });
 
-    // 실제 아틀라스 이미지 생성
-    await _generateAtlasPreviewImage(result);
+    // atlasPreviewImageProvider에서 이미 생성된 이미지 사용 (배경색 제거, erosion 등 모든 옵션 적용됨)
+    final atlasPreviewImage = await ref.read(atlasPreviewImageProvider.future);
+
+    if (!mounted) return;
+
+    setState(() {
+      // atlasPreviewImageProvider의 공유 리소스이므로 dispose하지 않음
+      _previewUiImage = atlasPreviewImage;
+      _isGeneratingPreview = false;
+    });
   }
 
-  Future<void> _generateAtlasPreviewImage(PackingResult packingResult) async {
-    try {
-      final sourceImageState = ref.read(sourceImageProvider);
-      final exportService = ref.read(exportServiceProvider);
-
-      if (sourceImageState.rawImage == null) {
-        setState(() => _isGeneratingPreview = false);
-        return;
-      }
-
-      // 아틀라스 이미지 생성 (img.Image)
-      final atlasImage = exportService.generateAtlasImage(
-        sourceImage: sourceImageState.rawImage!,
-        packingResult: packingResult,
-      );
-
-      // img.Image → ui.Image 변환
-      final uiImage = await _convertImgToUiImage(atlasImage);
-
-      if (!mounted) return;
-
-      setState(() {
-        // 이전 이미지 메모리 해제
-        _previewUiImage?.dispose();
-        _previewUiImage = uiImage;
-        _isGeneratingPreview = false;
-      });
-    } catch (e) {
-      if (mounted) {
-        setState(() => _isGeneratingPreview = false);
-      }
-    }
-  }
-
-  /// img.Image를 ui.Image로 변환
-  Future<ui.Image?> _convertImgToUiImage(img.Image image) async {
-    try {
-      // RGBA 픽셀 데이터 추출
-      final width = image.width;
-      final height = image.height;
-      final pixels = image.getBytes(order: img.ChannelOrder.rgba);
-
-      // Completer로 비동기 변환 완료 대기
-      final completer = Completer<ui.Image>();
-
-      ui.decodeImageFromPixels(
-        pixels,
-        width,
-        height,
-        ui.PixelFormat.rgba8888,
-        (ui.Image result) {
-          completer.complete(result);
-        },
-      );
-
-      // 5초 타임아웃
-      return await completer.future.timeout(
-        const Duration(seconds: 5),
-        onTimeout: () => throw TimeoutException('Image conversion timed out'),
-      );
-    } catch (e) {
-      debugPrint('Error converting image: $e');
-      return null;
-    }
-  }
-  
   Future<void> _selectOutputPath() async {
     final path = await FilePicker.platform.getDirectoryPath(
       dialogTitle: 'Select Output Directory',
@@ -534,7 +454,10 @@ class _ExportDialogState extends ConsumerState<ExportDialog> {
                       label: '프리셋',
                       value: settings.gameType,
                       items: GameType.values,
-                      onChanged: (v) => notifier.updateGameType(v!),
+                      onChanged: (v) {
+                        notifier.updateGameType(v!);
+                        _updatePreview(); // Trigger preview refresh on preset change
+                      },
                       itemLabelBuilder: (i) => i.displayName,
                     ),
                     const SizedBox(height: 16),
@@ -575,9 +498,12 @@ class _ExportDialogState extends ConsumerState<ExportDialog> {
                   label: '포맷 타입',
                   value: settings.iosFormat,
                   items: TextureCompressionFormat.values,
-                  onChanged: (v) => notifier.updateIOSFormat(v!),
+                  onChanged: (v) {
+                    notifier.updateIOSFormat(v!);
+                    _updatePreview(); // Trigger preview refresh on format change
+                  },
                   itemLabelBuilder: (i) => '${i.displayName}  -  ${i.compressionDescription}',
-                  helperText: '${settings.iosFormat.bitsPerPixel} bpp (낮을수록 용량 작음, 높을수록 품질 좋음)',
+                  helperText: settings.iosFormat.detailedDescription,
                 ),
               ),
             ],
@@ -1114,10 +1040,16 @@ class _ExportDialogState extends ConsumerState<ExportDialog> {
 
   Widget _buildPreviewSection() {
     final animationState = ref.watch(animationProvider);
-    final spriteState = ref.watch(spriteProvider);
+    final multiSpriteState = ref.watch(multiSpriteProvider);
+    final legacySpriteState = ref.watch(spriteProvider);
+
+    // Use multiSpriteProvider first, fallback to legacy
+    final allSprites = multiSpriteState.allSprites.isNotEmpty
+        ? multiSpriteState.allSprites
+        : legacySpriteState.sprites;
 
     // Count 9-slice enabled sprites
-    final nineSliceCount = spriteState.sprites.where((s) => s.hasNineSlice).length;
+    final nineSliceCount = allSprites.where((s) => s.hasNineSlice).length;
     final animationCount = animationState.sequences.length;
     final spriteCount = _previewPackingResult?.packedSprites.length ?? 0;
 
