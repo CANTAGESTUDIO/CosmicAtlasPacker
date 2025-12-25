@@ -178,6 +178,42 @@
 **1. Subtask Indentation**: EXACTLY 2 spaces (NO tabs, NO 4 spaces)
 **2. No Intermediate Headers**: ONLY `## Section` headers allowed
 **3. Flat Hierarchy Only**: Parent → Subtasks (2 spaces) ONLY
+**4. Best Practice Format**: 코드블록/인용블록만 허용 (하이픈 리스트 금지)
+
+### ⛔ CRITICAL: Best Practice 삽입 형식
+
+Best Practice를 서브태스크 아래에 추가할 때 **Kanban 파서가 태스크로 오인식하지 않는 형식**을 사용해야 합니다.
+
+❌ **FORBIDDEN - 하이픈 리스트:**
+```markdown
+  - [ ] Design login UI
+    <!-- Best Practice -->
+    - Login UI           ← 파서가 태스크로 오인식!
+      - Layout
+```
+
+✅ **REQUIRED - 코드블록 형식:**
+```markdown
+  - [ ] Design login UI
+    ```
+    [Best Practice]
+    · Layout: Mobile-first responsive, Focus management
+    · Validation: Real-time feedback, Clear error states
+    ```
+```
+
+✅ **REQUIRED - 인용블록 형식:**
+```markdown
+  - [ ] Design login UI
+    > **BP** · Layout: Mobile-first · Validation: Real-time · Security: No password in URL
+```
+
+| Rule | Constraint |
+|------|------------|
+| 위치 | 서브태스크 바로 아래 (4-space 들여쓰기) |
+| 형식 | 코드블록(```) 또는 인용블록(>) 필수 |
+| 금지 | `- ` 또는 `- [ ]`로 시작하는 리스트 |
+| 구분자 | 중점(·) 또는 화살표(→) 사용 |
 
 ### Pre-Move Checklist
 

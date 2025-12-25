@@ -252,6 +252,88 @@ enum ExportType {
   }
 }
 
+/// 이미지 출력 포맷 (PNG, JPEG)
+/// Note: WebP encoding is not supported by the image package (decode only)
+@JsonEnum(valueField: 'value')
+enum ImageOutputFormat {
+  png('PNG', 'png', false),
+  jpeg('JPEG', 'jpeg', true);
+
+  const ImageOutputFormat(this.displayName, this.value, this.supportsQuality);
+
+  /// 표시 이름
+  final String displayName;
+
+  /// JSON 직렬화 값 / 파일 확장자
+  final String value;
+
+  /// 품질 파라미터 지원 여부 (PNG는 무손실)
+  final bool supportsQuality;
+
+  /// 파일 확장자
+  String get extension => value == 'jpeg' ? 'jpg' : value;
+
+  /// 포맷 설명
+  String get description {
+    switch (this) {
+      case ImageOutputFormat.png:
+        return '무손실, 투명 지원';
+      case ImageOutputFormat.jpeg:
+        return '고압축, 투명 미지원';
+    }
+  }
+
+  /// 압축률 추정 (PNG 대비)
+  double get compressionRatio {
+    switch (this) {
+      case ImageOutputFormat.png:
+        return 1.0;
+      case ImageOutputFormat.jpeg:
+        return 0.25; // PNG 대비 약 25% 크기
+    }
+  }
+
+  /// 알파 채널 지원 여부
+  bool get supportsAlpha {
+    switch (this) {
+      case ImageOutputFormat.png:
+        return true;
+      case ImageOutputFormat.jpeg:
+        return false;
+    }
+  }
+
+  /// 기본 품질 값 (1-100, PNG는 압축 레벨)
+  int get defaultQuality {
+    switch (this) {
+      case ImageOutputFormat.png:
+        return 6; // 압축 레벨 0-9
+      case ImageOutputFormat.jpeg:
+        return 85;
+    }
+  }
+
+  /// 품질 라벨
+  String get qualityLabel {
+    switch (this) {
+      case ImageOutputFormat.png:
+        return '압축 레벨';
+      case ImageOutputFormat.jpeg:
+        return '품질';
+    }
+  }
+
+  /// 품질 범위
+  (int min, int max) get qualityRange {
+    switch (this) {
+      case ImageOutputFormat.png:
+        return (0, 9);
+      case ImageOutputFormat.jpeg:
+        return (1, 100);
+    }
+  }
+}
+
 /// 텍스처 압축 설정 모델
 @freezed
 class TextureCompressionSettings with _$TextureCompressionSettings {

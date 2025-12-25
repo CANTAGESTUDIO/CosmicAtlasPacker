@@ -86,37 +86,54 @@ Extract essential best practices for implementation tasks and format them as ult
 
 ## Integration with Task Documents
 
-**Example Task Document Integration:**
+### ⛔ CRITICAL: Task Document Format Protection
 
+**Best Practice는 서브태스크 아래에 위치하되, Kanban 파서가 태스크로 인식하지 않는 형식을 사용해야 합니다.**
+
+❌ **FORBIDDEN - 하이픈 리스트 사용:**
+```markdown
+  - [ ] Design login UI layout
+    <!-- Best Practice Tree -->
+    - Login UI           ← 파서가 태스크로 오인식!
+      - Layout
+```
+
+✅ **REQUIRED - 4-space 들여쓰기 + 코드블록 또는 인용블록 사용:**
 ```markdown
 ## Worker1
 
 - [ ] Implement user authentication #auth !high Deadline(2025:01:15)
   - [ ] Design login UI layout
-    <!-- Best Practice Tree -->
-    - Login UI
-      - Layout
-        - Mobile-first responsive design
-        - Focus management (accessibility)
-        - Password visibility toggle
-      - Validation
-        - Real-time feedback
-        - Clear error states
-      - Security
-        - No password in URL params
-        - Auto-logout on idle
+    ```
+    [Best Practice]
+    · Layout: Mobile-first responsive, Focus management, Password toggle
+    · Validation: Real-time feedback, Clear error states
+    · Security: No password in URL, Auto-logout on idle
+    ```
   - [ ] Create API integration
-    <!-- Best Practice Tree -->
-    - Auth API Integration
-      - Request Handling
-        - Token refresh logic
-        - Retry with exponential backoff
-      - Error Handling
-        - Network failure graceful degradation
-        - 401/403 redirect to login
-      - Security
-        - Secure token storage
-        - XSS/CSRF protection
+    ```
+    [Best Practice]
+    · Request: Token refresh logic, Retry with backoff
+    · Error: Network failure degradation, 401/403 redirect
+    · Security: Secure token storage, XSS/CSRF protection
+    ```
+```
+
+### Format Rules
+
+| Rule | Constraint |
+|------|------------|
+| **위치** | 서브태스크 바로 아래 (4-space 들여쓰기) |
+| **형식** | 코드블록(```) 또는 인용블록(>) 사용 |
+| **시작 문자** | 절대 `- ` 또는 `- [ ]`로 시작 금지 |
+| **구분자** | 중점(·) 또는 화살표(→) 사용 |
+| **길이** | 카테고리당 1줄, 총 3~5줄 이내 |
+
+### Alternative Format (인용블록)
+
+```markdown
+  - [ ] Design login UI layout
+    > **BP** · Layout: Mobile-first · Validation: Real-time feedback · Security: No password in URL
 ```
 
 ## Usage Notes

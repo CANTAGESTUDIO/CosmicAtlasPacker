@@ -1,0 +1,232 @@
+version: 1
+
+# Scanned paths (auto-generated)
+scanned_paths:
+  - .claude/rules/
+  - Docs/
+
+# Options
+options:
+  max_documents: 5
+  auto_invoke: true
+  show_loaded_report: true
+
+# Categories
+categories:
+  architecture:
+    keywords:
+      - architecture
+      - 아키텍처
+      - 구조
+      - structure
+      - layer
+      - 레이어
+      - clean architecture
+    documents:
+      - .claude/rules/architecture-management.md
+      - Docs/Rules/ARCHITECTURE_RULES.md
+      - Docs/Labels/LABEL_ARCHITECTURE.md
+
+  coding:
+    keywords:
+      - coding
+      - convention
+      - 코딩
+      - 컨벤션
+      - style
+      - 스타일
+      - lint
+      - format
+    documents:
+      - Docs/Index/CODING_CONVENTIONS.md
+      - Docs/Index/CRITICAL_RULES.md
+
+  ui:
+    keywords:
+      - UI
+      - 화면
+      - screen
+      - layout
+      - 레이아웃
+      - component
+      - 컴포넌트
+      - widget
+      - 위젯
+      - view
+      - 뷰
+    documents:
+      - Docs/UX/IA.md
+      - Docs/UX/Wireframes/Overview.md
+      - Docs/Labels/LABEL_UI_LAYOUT.md
+      - Docs/Labels/LABEL_UI_COMPONENT.md
+
+  design:
+    keywords:
+      - design
+      - 디자인
+      - color
+      - 색상
+      - theme
+      - 테마
+      - typography
+      - 타이포
+      - spacing
+      - 간격
+    documents:
+      - Docs/UX/DesignSystem/DesignSystem_Main.md
+      - Docs/UX/DesignSystem/ColorSystem.md
+      - Docs/UX/DesignSystem/Theming.md
+      - Docs/UX/DesignSystem/Typography.md
+      - Docs/UX/DesignSystem/Spacing.md
+
+  ux:
+    keywords:
+      - UX
+      - flow
+      - 플로우
+      - interaction
+      - 인터랙션
+      - user flow
+      - 사용자 흐름
+      - sequence
+      - 시퀀스
+    documents:
+      - Docs/UX/UserFlows.md
+      - Docs/UX/Sequences/CoreInteractions.md
+      - Docs/UX/DesignSystem/Motion.md
+      - Docs/UX/DesignSystem/Accessibility.md
+      - Docs/Index/UX_DESIGN.md
+
+  task:
+    keywords:
+      - task
+      - 태스크
+      - todo
+      - backlog
+      - 백로그
+      - 작업
+      - worker
+      - best practice
+      - 베스트 프랙티스
+      - subtask
+      - 서브태스크
+    documents:
+      - .claude/rules/task-management.md
+      - .claude/skills/best-practice-core/SKILL.md
+      - Docs/Rules/TASK_RULES.md
+      - Docs/Task/PUBLIC_Task.md
+
+  spec:
+    keywords:
+      - spec
+      - 스펙
+      - prd
+      - requirement
+      - 요구사항
+      - 기획
+    documents:
+      - .claude/rules/spec-management.md
+      - Docs/Rules/SPEC_RULES.md
+      - Docs/PRD.md
+      - Docs/Spec/PUBLIC_Spec.md
+
+  patterns:
+    keywords:
+      - pattern
+      - 패턴
+      - window
+      - 윈도우
+      - menu
+      - 메뉴
+      - keyboard
+      - 키보드
+      - shortcut
+      - 단축키
+      - navigation
+      - 네비게이션
+      - state
+      - 상태관리
+    documents:
+      - .claude/rules/pattern-index.md
+      - Docs/Patterns/Flutter-Desktop-Window-Management-Pattern.md
+      - Docs/Patterns/Flutter-Desktop-Menu-Bar-Pattern.md
+      - Docs/Patterns/Flutter-Desktop-Keyboard-Shortcuts-Pattern.md
+      - Docs/Patterns/Flutter-Desktop-State-Management-Pattern.md
+
+  labels:
+    keywords:
+      - label
+      - 라벨
+      - 레이블
+      - naming
+      - 네이밍
+    documents:
+      - .claude/rules/labeling.md
+      - Docs/Labels/LABEL_UI_LAYOUT.md
+      - Docs/Labels/LABEL_UI_COMPONENT.md
+      - Docs/Labels/LABEL_ARCHITECTURE.md
+      - Docs/Labels/LABEL_STATUS_MESSAGE.md
+
+  history:
+    keywords:
+      - history
+      - 히스토리
+      - log
+      - 로그
+      - 기록
+    documents:
+      - .claude/rules/history.md
+
+  brain:
+    keywords:
+      - brain
+      - 브레인
+      - canvas
+      - 캔버스
+      - memo
+      - 메모
+    documents:
+      - Docs/Index/BRAIN_FORMAT.md
+      - Docs/Rules/BRAIN_GUIDE.md
+
+# Composite categories (multiple categories combined)
+composites:
+  feature:
+    keywords:
+      - feature
+      - 기능
+      - 구현
+      - implement
+      - 개발
+      - develop
+    includes:
+      - ui
+      - design
+      - coding
+      - patterns
+
+  refactor:
+    keywords:
+      - refactor
+      - 리팩토링
+      - 리팩터
+      - cleanup
+      - 정리
+    includes:
+      - architecture
+      - coding
+      - patterns
+
+  bugfix:
+    keywords:
+      - bug
+      - 버그
+      - fix
+      - 수정
+      - error
+      - 에러
+      - issue
+      - 이슈
+    includes:
+      - coding
+      - patterns

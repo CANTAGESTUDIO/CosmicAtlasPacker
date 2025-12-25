@@ -22,6 +22,7 @@ class EditorColors {
   static const Color secondaryDark = Color(0xFFA64917); // --accent: rgb(166, 73, 23)
   static const Color errorDark = Color(0xFFEF4444); // --destructive: rgb(239, 68, 68)
   static const Color warningDark = Color(0xFFFB923C); // --chart-1 variant
+  static const Color successDark = Color(0xFF22C55E); // success: green-500
 
   // Background colors (dark)
   static const Color backgroundDark = Color(0xFF212121); // --background: rgb(33, 33, 33)
@@ -68,6 +69,7 @@ class EditorColors {
   static const Color secondaryLight = Color(0xFF388E3C);
   static const Color errorLight = Color(0xFFD32F2F);
   static const Color warningLight = Color(0xFFF57C00);
+  static const Color successLight = Color(0xFF16A34A); // success: green-600
 
   // Background colors (light)
   static const Color backgroundLight = Color(0xFFF5F5F5);
@@ -113,6 +115,7 @@ class EditorColors {
   static const Color secondary = secondaryDark;
   static const Color error = errorDark;
   static const Color warning = warningDark;
+  static const Color success = successDark;
 
   static const Color background = backgroundDark;
   static const Color surface = surfaceDark;
@@ -159,6 +162,7 @@ class EditorThemeColors {
   Color get secondary => isDark ? EditorColors.secondaryDark : EditorColors.secondaryLight;
   Color get error => isDark ? EditorColors.errorDark : EditorColors.errorLight;
   Color get warning => isDark ? EditorColors.warningDark : EditorColors.warningLight;
+  Color get success => isDark ? EditorColors.successDark : EditorColors.successLight;
 
   // Background colors
   Color get background => isDark ? EditorColors.backgroundDark : EditorColors.backgroundLight;

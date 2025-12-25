@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:io';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:image/image.dart' as img;
 
-import '../../core/constants/editor_constants.dart';
 import '../../models/texture_compression_settings.dart';
 import '../../providers/project_provider.dart';
 // import '../../providers/atlas_provider.dart'; // Removed
@@ -47,9 +49,19 @@ class _ExportDialogState extends ConsumerState<ExportDialog> {
   bool _exportAnimationInfo = true; // 애니메이션이 있으면 기본 체크
   bool _exportSpriteFont = false; // 스프라이트 폰트 내보내기
 
+  // 이미지 출력 포맷 설정
+  ImageOutputFormat _imageFormat = ImageOutputFormat.png;
+  int _imageQuality = 80; // WebP/JPEG 품질 (1-100)
+  int _pngCompressionLevel = 6; // PNG 압축 레벨 (0-9)
+
   bool _isExporting = false;
   String? _exportError;
   PackingResult? _previewPackingResult;
+
+  // 실제 이미지 프리뷰 관련 상태
+  ui.Image? _previewUiImage;
+  bool _isGeneratingPreview = false;
+  Timer? _debounceTimer;
 
   @override
   void initState() {
@@ -80,19 +92,33 @@ class _ExportDialogState extends ConsumerState<ExportDialog> {
   void dispose() {
     _pathController.dispose();
     _nameController.dispose();
+    _debounceTimer?.cancel();
+    _previewUiImage?.dispose();
     super.dispose();
   }
 
   void _updatePreview() {
+    // 디바운스: 300ms 후에 프리뷰 생성
+    _debounceTimer?.cancel();
+    _debounceTimer = Timer(const Duration(milliseconds: 300), () {
+      _generatePreview();
+    });
+  }
+
+  Future<void> _generatePreview() async {
     final sprites = ref.read(spriteProvider).sprites;
     if (sprites.isEmpty) {
-      setState(() => _previewPackingResult = null);
+      setState(() {
+        _previewPackingResult = null;
+        _previewUiImage?.dispose();
+        _previewUiImage = null;
+      });
       return;
     }
 
-    final atlasSettings = ref.read(atlasSettingsProvider); // Global settings
+    final atlasSettings = ref.read(atlasSettingsProvider);
     final packingService = ref.read(binPackingServiceProvider);
-    
+
     final result = packingService.pack(
       sprites,
       maxWidth: atlasSettings.maxWidth,
@@ -102,7 +128,79 @@ class _ExportDialogState extends ConsumerState<ExportDialog> {
       allowRotation: atlasSettings.allowRotation,
     );
 
-    setState(() => _previewPackingResult = result);
+    setState(() {
+      _previewPackingResult = result;
+      _isGeneratingPreview = true;
+    });
+
+    // 실제 아틀라스 이미지 생성
+    await _generateAtlasPreviewImage(result);
+  }
+
+  Future<void> _generateAtlasPreviewImage(PackingResult packingResult) async {
+    try {
+      final sourceImageState = ref.read(sourceImageProvider);
+      final exportService = ref.read(exportServiceProvider);
+
+      if (sourceImageState.rawImage == null) {
+        setState(() => _isGeneratingPreview = false);
+        return;
+      }
+
+      // 아틀라스 이미지 생성 (img.Image)
+      final atlasImage = exportService.generateAtlasImage(
+        sourceImage: sourceImageState.rawImage!,
+        packingResult: packingResult,
+      );
+
+      // img.Image → ui.Image 변환
+      final uiImage = await _convertImgToUiImage(atlasImage);
+
+      if (!mounted) return;
+
+      setState(() {
+        // 이전 이미지 메모리 해제
+        _previewUiImage?.dispose();
+        _previewUiImage = uiImage;
+        _isGeneratingPreview = false;
+      });
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isGeneratingPreview = false);
+      }
+    }
+  }
+
+  /// img.Image를 ui.Image로 변환
+  Future<ui.Image?> _convertImgToUiImage(img.Image image) async {
+    try {
+      // RGBA 픽셀 데이터 추출
+      final width = image.width;
+      final height = image.height;
+      final pixels = image.getBytes(order: img.ChannelOrder.rgba);
+
+      // Completer로 비동기 변환 완료 대기
+      final completer = Completer<ui.Image>();
+
+      ui.decodeImageFromPixels(
+        pixels,
+        width,
+        height,
+        ui.PixelFormat.rgba8888,
+        (ui.Image result) {
+          completer.complete(result);
+        },
+      );
+
+      // 5초 타임아웃
+      return await completer.future.timeout(
+        const Duration(seconds: 5),
+        onTimeout: () => throw TimeoutException('Image conversion timed out'),
+      );
+    } catch (e) {
+      debugPrint('Error converting image: $e');
+      return null;
+    }
   }
   
   Future<void> _selectOutputPath() async {
@@ -150,6 +248,7 @@ class _ExportDialogState extends ConsumerState<ExportDialog> {
     try {
       final sourceImageState = ref.read(sourceImageProvider);
       final exportService = ref.read(exportServiceProvider);
+      final animationState = ref.read(animationProvider);
 
       if (sourceImageState.rawImage == null) {
         throw Exception('No source image loaded');
@@ -159,34 +258,61 @@ class _ExportDialogState extends ConsumerState<ExportDialog> {
           _previewPackingResult!.packedSprites.isEmpty) {
         throw Exception('No sprites to export');
       }
-      
+
       final outputPath = _pathController.text;
       final fileName = _nameController.text;
-      final pngPath = '$outputPath${Platform.pathSeparator}$fileName.png';
+      final imageExt = _imageFormat.extension;
+      final imagePath = '$outputPath${Platform.pathSeparator}$fileName.$imageExt';
       final jsonPath = '$outputPath${Platform.pathSeparator}$fileName.json';
+      final fntPath = '$outputPath${Platform.pathSeparator}$fileName.fnt';
 
-      // Export PNG
+      // Export image (PNG/WebP/JPEG)
       if (_exportPng) {
         final atlasImage = exportService.generateAtlasImage(
           sourceImage: sourceImageState.rawImage!,
           packingResult: _previewPackingResult!,
         );
-        await exportService.exportPng(
+
+        // Get quality parameter based on format
+        final quality = _imageFormat == ImageOutputFormat.png
+            ? _pngCompressionLevel
+            : _imageQuality;
+
+        await exportService.exportImage(
           atlasImage: atlasImage,
-          pngPath: pngPath,
+          outputPath: imagePath,
+          format: _imageFormat,
+          quality: quality,
         );
       }
 
-      // Export JSON
+      // Export JSON with animation and 9-slice data
       if (_exportJson) {
+        // Get animation sequences if export is enabled
+        final animations = _exportAnimationInfo && animationState.sequences.isNotEmpty
+            ? animationState.sequences
+            : null;
+
         final metadata = exportService.generateMetadata(
           packingResult: _previewPackingResult!,
-          atlasFileName: '$fileName.png',
+          atlasFileName: '$fileName.$imageExt',
+          animations: animations,
+          includeAnimations: _exportAnimationInfo,
         );
         await exportService.exportJson(
           metadata: metadata,
           outputPath: jsonPath,
           prettyPrint: _prettyPrintJson,
+        );
+      }
+
+      // Export BMFont .fnt file if sprite font option is enabled
+      if (_exportSpriteFont) {
+        await exportService.exportFnt(
+          packingResult: _previewPackingResult!,
+          fntPath: fntPath,
+          atlasFileName: '$fileName.$imageExt',
+          fontName: fileName,
         );
       }
 
@@ -216,7 +342,7 @@ class _ExportDialogState extends ConsumerState<ExportDialog> {
             child: Column(
               children: [
                 Expanded(
-                  child: Padding(
+                  child: SingleChildScrollView(
                     padding: const EdgeInsets.all(24),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -522,13 +648,52 @@ class _ExportDialogState extends ConsumerState<ExportDialog> {
           ),
           child: Column(
             children: [
-              _buildCompactCheckbox(
-                title: 'PNG 내보내기',
-                description: '텍스처 아틀라스 이미지',
-                value: _exportPng,
-                onChanged: (v) => setState(() => _exportPng = v ?? true),
+              // 이미지 내보내기 + 포맷 선택
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // 체크박스
+                  SizedBox(
+                    height: 20,
+                    width: 20,
+                    child: Checkbox(
+                      value: _exportPng,
+                      onChanged: (v) => setState(() => _exportPng = v ?? true),
+                      activeColor: EditorColors.primary,
+                      side: const BorderSide(color: EditorColors.border, width: 1.5),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(3)),
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Text(
+                              '이미지 내보내기',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w500,
+                                color: _exportPng ? EditorColors.iconDefault : EditorColors.iconDisabled,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            // 포맷 선택 드롭다운
+                            _buildFormatDropdown(),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        // 품질/압축 슬라이더 (PNG가 아닌 경우만)
+                        if (_exportPng) _buildQualitySlider(),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 16),
               _buildCompactCheckbox(
                 title: 'JSON 메타데이터',
                 description: '스프라이트 좌표/크기 정보',
@@ -578,6 +743,186 @@ class _ExportDialogState extends ConsumerState<ExportDialog> {
             ],
           ),
         ),
+      ],
+    );
+  }
+
+  Widget _buildFormatDropdown() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: EditorColors.surface,
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: EditorColors.border),
+      ),
+      child: DropdownButton<ImageOutputFormat>(
+        value: _imageFormat,
+        onChanged: _exportPng ? (v) {
+          if (v != null) {
+            setState(() {
+              _imageFormat = v;
+              // 포맷 변경 시 기본 품질로 리셋
+              _imageQuality = v.defaultQuality;
+              _pngCompressionLevel = 6;
+            });
+          }
+        } : null,
+        underline: const SizedBox(),
+        isDense: true,
+        dropdownColor: EditorColors.surface,
+        style: const TextStyle(fontSize: 12, color: EditorColors.iconDefault),
+        items: ImageOutputFormat.values.map((format) {
+          return DropdownMenuItem(
+            value: format,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  format == ImageOutputFormat.png ? Icons.image : Icons.photo,
+                  size: 14,
+                  color: EditorColors.iconDisabled,
+                ),
+                const SizedBox(width: 6),
+                Text(format.displayName),
+                const SizedBox(width: 8),
+                Text(
+                  format.description,
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: EditorColors.iconDisabled.withValues(alpha: 0.6),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  Widget _buildQualitySlider() {
+    final exportService = ref.read(exportServiceProvider);
+    final estimatedSizeKB = _previewPackingResult != null
+        ? exportService.estimateFileSize(
+            atlasWidth: _previewPackingResult!.atlasWidth,
+            atlasHeight: _previewPackingResult!.atlasHeight,
+            format: _imageFormat,
+            quality: _imageFormat == ImageOutputFormat.png
+                ? _pngCompressionLevel
+                : _imageQuality,
+          )
+        : 0.0;
+
+    // 예상 크기 표시 문자열
+    String sizeText;
+    if (estimatedSizeKB >= 1024) {
+      sizeText = '~${(estimatedSizeKB / 1024).toStringAsFixed(1)} MB';
+    } else {
+      sizeText = '~${estimatedSizeKB.toStringAsFixed(0)} KB';
+    }
+
+    // PNG는 압축 레벨 (0-9), WebP/JPEG는 품질 (1-100)
+    final isPng = _imageFormat == ImageOutputFormat.png;
+    final currentValue = isPng ? _pngCompressionLevel.toDouble() : _imageQuality.toDouble();
+    final minValue = isPng ? 0.0 : 1.0;
+    final maxValue = isPng ? 9.0 : 100.0;
+    final divisions = isPng ? 9 : 99;
+
+    return Row(
+      children: [
+        SizedBox(
+          width: 70,
+          child: Text(
+            _imageFormat.qualityLabel,
+            style: const TextStyle(fontSize: 11, color: EditorColors.iconDisabled),
+          ),
+        ),
+        Expanded(
+          child: SliderTheme(
+            data: SliderThemeData(
+              trackHeight: 4,
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+              overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+              activeTrackColor: EditorColors.primary,
+              inactiveTrackColor: EditorColors.border,
+              thumbColor: EditorColors.primary,
+              overlayColor: EditorColors.primary.withValues(alpha: 0.2),
+            ),
+            child: Slider(
+              value: currentValue,
+              min: minValue,
+              max: maxValue,
+              divisions: divisions,
+              onChanged: (v) {
+                setState(() {
+                  if (isPng) {
+                    _pngCompressionLevel = v.round();
+                  } else {
+                    _imageQuality = v.round();
+                  }
+                });
+              },
+            ),
+          ),
+        ),
+        SizedBox(
+          width: 36,
+          child: Text(
+            isPng ? '$_pngCompressionLevel' : '$_imageQuality%',
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: EditorColors.iconDefault,
+              fontFamily: 'monospace',
+            ),
+            textAlign: TextAlign.right,
+          ),
+        ),
+        const SizedBox(width: 16),
+        // 예상 파일 크기
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          decoration: BoxDecoration(
+            color: EditorColors.surface,
+            borderRadius: BorderRadius.circular(4),
+            border: Border.all(color: EditorColors.border.withValues(alpha: 0.5)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.folder_zip,
+                size: 12,
+                color: _imageFormat == ImageOutputFormat.jpeg
+                    ? EditorColors.warning
+                    : EditorColors.iconDisabled,
+              ),
+              const SizedBox(width: 4),
+              Text(
+                sizeText,
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w500,
+                  color: _imageFormat == ImageOutputFormat.jpeg
+                      ? EditorColors.warning
+                      : EditorColors.iconDisabled,
+                ),
+              ),
+            ],
+          ),
+        ),
+        // JPEG 알파 경고
+        if (_imageFormat == ImageOutputFormat.jpeg) ...[
+          const SizedBox(width: 8),
+          Tooltip(
+            message: 'JPEG는 투명도를 지원하지 않습니다.\n투명 영역은 흰색으로 채워집니다.',
+            child: Icon(
+              Icons.warning_amber,
+              size: 16,
+              color: EditorColors.warning,
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -713,9 +1058,35 @@ class _ExportDialogState extends ConsumerState<ExportDialog> {
   }
 
   Widget _buildExportActions() {
+    final hasSprites = _previewPackingResult != null &&
+        _previewPackingResult!.packedSprites.isNotEmpty;
+    final canExport = hasSprites &&
+        !_isExporting &&
+        _pathController.text.isNotEmpty &&
+        _nameController.text.isNotEmpty;
+
     return Row(
       mainAxisAlignment: MainAxisAlignment.end,
       children: [
+        // 스프라이트 없을 때 경고 메시지
+        if (!hasSprites)
+          Padding(
+            padding: const EdgeInsets.only(right: 16),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.warning_amber, size: 16, color: EditorColors.warning),
+                const SizedBox(width: 6),
+                Text(
+                  '내보낼 스프라이트가 없습니다',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: EditorColors.warning,
+                  ),
+                ),
+              ],
+            ),
+          ),
         TextButton(
           onPressed: () => Navigator.of(context).pop(false),
           style: TextButton.styleFrom(
@@ -725,7 +1096,7 @@ class _ExportDialogState extends ConsumerState<ExportDialog> {
         ),
         const SizedBox(width: 8),
         FilledButton(
-          onPressed: _isExporting ? null : _performExport,
+          onPressed: canExport ? _performExport : null,
           child: _isExporting
               ? const SizedBox(
                   width: 16,
@@ -742,6 +1113,14 @@ class _ExportDialogState extends ConsumerState<ExportDialog> {
   }
 
   Widget _buildPreviewSection() {
+    final animationState = ref.watch(animationProvider);
+    final spriteState = ref.watch(spriteProvider);
+
+    // Count 9-slice enabled sprites
+    final nineSliceCount = spriteState.sprites.where((s) => s.hasNineSlice).length;
+    final animationCount = animationState.sequences.length;
+    final spriteCount = _previewPackingResult?.packedSprites.length ?? 0;
+
     return Container(
       color: const Color(0xFF2A2A2A), // Dark gray background for contrast
       padding: const EdgeInsets.fromLTRB(24, 24, 16, 24), // 오른쪽 여백 줄임
@@ -781,9 +1160,9 @@ class _ExportDialogState extends ConsumerState<ExportDialog> {
                        const SizedBox(width: 8),
                         Text(
                          // Simple memory calc: 4 bytes per pixel
-                         _previewPackingResult != null 
+                         _previewPackingResult != null
                              ? '${(_previewPackingResult!.atlasWidth * _previewPackingResult!.atlasHeight * 4 / (1024*1024)).toStringAsFixed(2)} MB'
-                             : '0 MB', 
+                             : '0 MB',
                          style: const TextStyle(fontSize: 13, color: EditorColors.iconDefault, fontFamily: 'monospace', fontWeight: FontWeight.bold),
                        ),
                      ],
@@ -792,7 +1171,7 @@ class _ExportDialogState extends ConsumerState<ExportDialog> {
               ],
             ),
           ),
-          
+
           // The actual preview area
           Expanded(
             child: Container(
@@ -807,6 +1186,104 @@ class _ExportDialogState extends ConsumerState<ExportDialog> {
               child: _buildPreviewContent(),
             ),
           ),
+
+          // Export info stats bar
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            decoration: BoxDecoration(
+              color: EditorColors.panelBackground,
+              border: Border.all(color: EditorColors.border),
+            ),
+            child: Row(
+              children: [
+                // Sprite count
+                _buildStatChip(
+                  icon: Icons.grid_view,
+                  label: '스프라이트',
+                  value: _exportSpriteFont ? '$spriteCount자' : '$spriteCount개',
+                  color: EditorColors.primary,
+                ),
+                const SizedBox(width: 12),
+                // Animation count (if enabled)
+                if (_exportAnimationInfo && animationCount > 0)
+                  _buildStatChip(
+                    icon: Icons.animation,
+                    label: '애니메이션',
+                    value: '$animationCount개',
+                    color: EditorColors.secondary,
+                  ),
+                if (_exportAnimationInfo && animationCount > 0)
+                  const SizedBox(width: 12),
+                // 9-Slice count (if any)
+                if (nineSliceCount > 0)
+                  _buildStatChip(
+                    icon: Icons.grid_on,
+                    label: '9-Slice',
+                    value: '$nineSliceCount개',
+                    color: EditorColors.warning,
+                  ),
+                if (nineSliceCount > 0)
+                  const SizedBox(width: 12),
+                // Font mode indicator
+                if (_exportSpriteFont)
+                  _buildStatChip(
+                    icon: Icons.font_download,
+                    label: '폰트 모드',
+                    value: 'BMFont',
+                    color: EditorColors.success,
+                  ),
+                const Spacer(),
+                // Atlas size
+                if (_previewPackingResult != null)
+                  Text(
+                    '${_previewPackingResult!.atlasWidth} × ${_previewPackingResult!.atlasHeight}',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontFamily: 'monospace',
+                      color: EditorColors.iconDisabled,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatChip({
+    required IconData icon,
+    required String label,
+    required String value,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 6),
+          Text(
+            '$label: ',
+            style: TextStyle(
+              fontSize: 11,
+              color: EditorColors.iconDisabled,
+            ),
+          ),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: color,
+            ),
+          ),
         ],
       ),
     );
@@ -819,17 +1296,27 @@ class _ExportDialogState extends ConsumerState<ExportDialog> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
-              Icons.image_not_supported,
+              Icons.content_cut,
               size: 64,
-              color: EditorColors.iconDisabled.withOpacity(0.3),
+              color: EditorColors.iconDisabled.withValues(alpha: 0.3),
             ),
             const SizedBox(height: 16),
             Text(
-              'No sprites to preview',
+              '내보낼 스프라이트가 없습니다',
               style: TextStyle(
                 color: EditorColors.iconDisabled,
                 fontSize: 14,
+                fontWeight: FontWeight.w500,
               ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '먼저 이미지에서 스프라이트 영역을 정의하세요\n(Auto Slice, Grid Slice, 또는 수동 선택)',
+              style: TextStyle(
+                color: EditorColors.iconDisabled.withValues(alpha: 0.6),
+                fontSize: 12,
+              ),
+              textAlign: TextAlign.center,
             ),
           ],
         ),
@@ -842,30 +1329,67 @@ class _ExportDialogState extends ConsumerState<ExportDialog> {
         final scale = _calculatePreviewScale(
           result.atlasWidth,
           result.atlasHeight,
-          constraints.maxWidth - 32, // More padding inside preview
+          constraints.maxWidth - 32,
           constraints.maxHeight - 32,
         );
 
         return Center(
-          child: Container(
-            width: result.atlasWidth * scale,
-            height: result.atlasHeight * scale,
-            decoration: BoxDecoration(
-              border: Border.all(color: EditorColors.primary.withOpacity(0.5), width: 1),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.5),
-                  blurRadius: 20,
-                  spreadRadius: 5,
-                )
-              ]
-            ),
-            child: CustomPaint(
-              painter: _AtlasPreviewPainter(
-                packingResult: result,
-                scale: scale,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              // 실제 이미지 프리뷰
+              Container(
+                width: result.atlasWidth * scale,
+                height: result.atlasHeight * scale,
+                decoration: BoxDecoration(
+                  border: Border.all(color: EditorColors.primary.withOpacity(0.5), width: 1),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.5),
+                      blurRadius: 20,
+                      spreadRadius: 5,
+                    )
+                  ],
+                ),
+                child: CustomPaint(
+                  painter: _AtlasPreviewPainter(
+                    packingResult: result,
+                    scale: scale,
+                    previewImage: _previewUiImage,
+                  ),
+                ),
               ),
-            ),
+              // 로딩 인디케이터
+              if (_isGeneratingPreview)
+                Container(
+                  width: result.atlasWidth * scale,
+                  height: result.atlasHeight * scale,
+                  color: Colors.black.withOpacity(0.5),
+                  child: Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const SizedBox(
+                          width: 32,
+                          height: 32,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 3,
+                            color: EditorColors.primary,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          '프리뷰 생성 중...',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: EditorColors.iconDefault.withOpacity(0.8),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
           ),
         );
       },
@@ -957,10 +1481,12 @@ class _TextField extends StatelessWidget {
 class _AtlasPreviewPainter extends CustomPainter {
   final PackingResult packingResult;
   final double scale;
+  final ui.Image? previewImage;
 
   _AtlasPreviewPainter({
     required this.packingResult,
     required this.scale,
+    this.previewImage,
   });
 
   @override
@@ -975,20 +1501,28 @@ class _AtlasPreviewPainter extends CustomPainter {
       packingResult.atlasHeight.toDouble(),
     );
 
-    // Draw background (Checkerboard pattern could be nice, but simple black/dark for now)
-    final paint = Paint()..color = const Color(0xFF111111);
-    canvas.drawRect(atlasRect, paint);
-    
-    // Draw rectangles
-    final rectPaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..color = Colors.white.withOpacity(0.3)
-      ..strokeWidth = 1.0 / scale; 
+    // Draw checkerboard background for transparency
+    _drawCheckerboard(canvas, atlasRect);
 
-    for (final sprite in packingResult.packedSprites) {
-      canvas.drawRect(sprite.packedRect, rectPaint);
+    // Draw actual atlas image if available
+    if (previewImage != null) {
+      canvas.drawImage(
+        previewImage!,
+        Offset.zero,
+        Paint()..filterQuality = FilterQuality.medium,
+      );
+    } else {
+      // Fallback: draw rectangles if image not ready
+      final rectPaint = Paint()
+        ..style = PaintingStyle.stroke
+        ..color = Colors.white.withOpacity(0.3)
+        ..strokeWidth = 1.0 / scale;
+
+      for (final sprite in packingResult.packedSprites) {
+        canvas.drawRect(sprite.packedRect, rectPaint);
+      }
     }
-    
+
     // Draw Border
     final borderPaint = Paint()
       ..style = PaintingStyle.stroke
@@ -997,8 +1531,33 @@ class _AtlasPreviewPainter extends CustomPainter {
     canvas.drawRect(atlasRect, borderPaint);
   }
 
+  /// 체커보드 패턴 그리기 (투명도 표현)
+  void _drawCheckerboard(Canvas canvas, Rect rect) {
+    const cellSize = 8.0;
+    final lightPaint = Paint()..color = const Color(0xFF2A2A2A);
+    final darkPaint = Paint()..color = const Color(0xFF1E1E1E);
+
+    for (double y = rect.top; y < rect.bottom; y += cellSize) {
+      for (double x = rect.left; x < rect.right; x += cellSize) {
+        final isEvenRow = ((y / cellSize).floor() % 2) == 0;
+        final isEvenCol = ((x / cellSize).floor() % 2) == 0;
+        final paint = (isEvenRow == isEvenCol) ? lightPaint : darkPaint;
+
+        final cellRect = Rect.fromLTWH(
+          x,
+          y,
+          (x + cellSize > rect.right) ? rect.right - x : cellSize,
+          (y + cellSize > rect.bottom) ? rect.bottom - y : cellSize,
+        );
+        canvas.drawRect(cellRect, paint);
+      }
+    }
+  }
+
   @override
   bool shouldRepaint(covariant _AtlasPreviewPainter oldDelegate) {
-    return oldDelegate.packingResult != packingResult || oldDelegate.scale != scale;
+    return oldDelegate.packingResult != packingResult ||
+        oldDelegate.scale != scale ||
+        oldDelegate.previewImage != previewImage;
   }
 }
